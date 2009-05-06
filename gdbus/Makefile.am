@@ -69,9 +69,9 @@ libgdbus_standalone_la_SOURCES =					\
 	gdbuserror-lowlevel.h						\
 	gdbuserror.h			gdbuserror.c			\
 	gdbusmainloop-lowlevel.h	gdbusmainloop.c			\
-	gdbusctypemapping.h-lowlevel.h					\
-	gdbusctypemapping.h		gdbusctypemapping.c		\
-	gdbusconnection.h-lowlevel.h					\
+	gdbusctypemapping-lowlevel.h					\
+					gdbusctypemapping.c		\
+	gdbusconnection-lowlevel.h					\
 	gdbusconnection.h		gdbusconnection.c		\
 	gbusnameowner.h			gbusnameowner.c			\
 	gbusnamewatcher.h		gbusnamewatcher.c		\
@@ -105,10 +105,6 @@ uninstall-def-file:
 
 export_symbols = -export-symbols-regex '^g_.*'
 
-install-data-local: install-ms-lib install-def-file
-
-uninstall-local: uninstall-ms-lib uninstall-def-file
-
 LT_CURRENT=0
 LT_REVISION=0
 LT_AGE=0
@@ -119,7 +115,7 @@ libgdbus_standalone_la_LDFLAGS = \
 
 libgdbus_standalone_la_DEPENDENCIES = $(gdbus_def)
 
-gdbusincludedir=$(includedir)/gdbus-standalone
+gdbusincludedir=$(includedir)/gdbus-standalone/gdbus
 gdbusinclude_HEADERS = 			\
 	$(gdbus_headers)		\
 	gdbusenumtypes.h		\
