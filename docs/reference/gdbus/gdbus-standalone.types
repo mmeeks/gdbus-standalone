@@ -1,0 +1,9 @@
+g_dbus_connection_get_type
+g_bus_name_owner_get_type
+g_bus_name_watcher_get_type
+g_bus_type_get_type
+g_bus_name_owner_flags_get_type
+g_dbus_error_get_type
+g_dbus_proxy_get_type
+g_dbus_structure_get_type
+g_dbus_variant_get_type

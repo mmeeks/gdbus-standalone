@@ -1,0 +1,249 @@
+/* This file lists all exported symbols. It is used to generate
+ * the gio.def file used to control exports on Windows and the
+ * gioalias.h/gioaliasdef.c files used to avoid PLT entries for
+ * internal uses of exported functions (see makegioalias.pl).
+ *
+ * Every symbol must be included in the right
+ * #ifdef IN_HEADER(sym) #endif and
+ * #ifdef IN_FILE(sym) #endif sections.
+ */
+
+#ifdef ALL_FILES
+#define IN_FILE(x) 1
+#define IN_HEADER(x) 1
+#endif
+
+#if IN_HEADER(__G_DBUS_CONNECTION_H__)
+#if IN_FILE(__G_DBUS_CONNECTION_C__)
+g_dbus_connection_get_type G_GNUC_CONST
+g_dbus_connection_bus_get
+g_dbus_connection_bus_get_private
+g_dbus_connection_get_unique_name
+g_dbus_connection_get_is_open
+g_dbus_connection_get_is_private
+g_dbus_connection_get_bus_type
+g_dbus_connection_get_exit_on_close
+g_dbus_connection_set_exit_on_close
+g_dbus_connection_get_is_initialized
+g_dbus_connection_signal_subscribe
+g_dbus_connection_signal_unsubscribe
+#endif
+#endif
+
+#if IN_HEADER(__G_DBUS_CONNECTION_LOWLEVEL_H__)
+#if IN_FILE(__G_DBUS_CONNECTION_C__)
+g_dbus_connection_get_dbus_1_connection
+g_dbus_connection_send_dbus_1_message
+g_dbus_connection_send_dbus_1_message_with_reply
+g_dbus_connection_send_dbus_1_message_with_reply_finish
+g_dbus_connection_send_dbus_1_message_block
+g_dbus_connection_send_dbus_1_message_cancel
+g_dbus_connection_dbus_1_signal_subscribe
+g_dbus_connection_dbus_1_signal_unsubscribe
+#endif
+#endif
+
+#if IN_HEADER(__G_DBUS_C_TYPE_MAPPING_LOWLEVEL_H__)
+#if IN_FILE(__G_DBUS_C_TYPE_MAPPING_C__)
+g_dbus_c_type_mapping_get_value_from_iter
+g_dbus_c_type_mapping_append_value_to_iter
+#endif
+#endif
+
+#if IN_HEADER(__G_DBUS_MAINLOOP_LOWLEVEL_H__)
+#if IN_FILE(__G_DBUS_MAINLOOP_C__)
+g_dbus_integrate_dbus_1_connection
+g_dbus_unintegrate_dbus_1_connection
+g_dbus_integrate_dbus_1_server
+g_dbus_unintegrate_dbus_1_server
+#endif
+#endif
+
+#if IN_HEADER(__G_BUS_NAME_OWNER_H__)
+#if IN_FILE(__G_BUS_NAME_OWNER_C__)
+g_bus_name_owner_get_type G_GNUC_CONST
+g_bus_name_owner_new
+g_bus_name_owner_new_for_connection
+g_bus_name_owner_get_owns_name
+g_bus_name_owner_get_name
+g_bus_name_owner_get_bus_type
+g_bus_name_owner_get_flags
+g_bus_name_owner_get_is_initialized
+g_bus_name_owner_get_connection
+#endif
+#endif
+
+#if IN_HEADER(__G_BUS_NAME_WATCHER_H__)
+#if IN_FILE(__G_BUS_NAME_WATCHER_C__)
+g_bus_name_watcher_get_type G_GNUC_CONST
+g_bus_name_watcher_new
+g_bus_name_watcher_new_for_connection
+g_bus_name_watcher_get_name_owner
+g_bus_name_watcher_get_name
+g_bus_name_watcher_get_bus_type
+g_bus_name_watcher_get_is_initialized
+g_bus_name_watcher_get_connection
+#endif
+#endif
+
+#if IN_HEADER(__G_DBUS_ENUM_TYPES_H__)
+#if IN_FILE(__G_DBUS_ENUM_TYPES_C__)
+g_dbus_error_get_type G_GNUC_CONST
+g_bus_type_get_type G_GNUC_CONST
+g_bus_name_owner_flags_get_type G_GNUC_CONST
+g_dbus_proxy_flags_get_type G_GNUC_CONST
+#endif
+#endif
+
+#if IN_HEADER(__G_DBUS_ERROR_H__)
+#if IN_FILE(__G_DBUS_ERROR_C__)
+g_dbus_error_quark
+g_dbus_error_get_remote_exception
+#endif
+#endif
+#if IN_HEADER(__G_DBUS_ERROR_LOWLEVEL_H__)
+#if IN_FILE(__G_DBUS_ERROR_C__)
+g_dbus_error_new_for_dbus_error
+g_dbus_error_new_for_dbus_error_valist
+g_dbus_error_new_for_gerror
+g_dbus_error_set_dbus_error
+g_dbus_error_set_dbus_error_valist
+#endif
+#endif
+
+#if IN_HEADER(__G_DBUS_NAME_WATCHING_H__)
+#if IN_FILE(__G_DBUS_NAME_WATCHING_C__)
+g_bus_watch_name
+g_bus_unwatch_name
+#endif
+#endif
+
+#if IN_HEADER(__G_DBUS_NAME_OWNING_H__)
+#if IN_FILE(__G_DBUS_NAME_OWNING_C__)
+g_bus_own_name
+g_bus_unown_name
+#endif
+#endif
+
+#if IN_HEADER(__G_DBUS_PROXY_H__)
+#if IN_FILE(__G_DBUS_PROXY_C__)
+g_dbus_proxy_get_type G_GNUC_CONST
+g_dbus_proxy_new
+g_dbus_proxy_get_flags
+g_dbus_proxy_get_name
+g_dbus_proxy_get_object_path
+g_dbus_proxy_get_interface_name
+g_dbus_proxy_get_connection
+g_dbus_proxy_get_name_owner
+g_dbus_proxy_invoke_method
+g_dbus_proxy_invoke_method_block
+g_dbus_proxy_invoke_method_cancel
+g_dbus_proxy_invoke_method_finish
+g_dbus_proxy_invoke_method_sync
+g_dbus_proxy_get_properties_available
+g_dbus_proxy_get_cached_property
+#endif
+#endif
+
+#if IN_HEADER(__G_DBUS_STRUCTURE_H__)
+#if IN_FILE(__G_DBUS_STRUCTURE_C__)
+g_dbus_structure_get_type G_GNUC_CONST
+g_dbus_structure_equal
+g_dbus_structure_get_element
+g_dbus_structure_get_num_elements
+g_dbus_structure_get_signature
+g_dbus_structure_get_signature_for_element
+g_dbus_structure_new
+g_dbus_structure_set_element
+#endif
+#endif
+
+#if IN_HEADER(__G_DBUS_VARIANT_H__)
+#if IN_FILE(__G_DBUS_VARIANT_C__)
+g_dbus_variant_get_type G_GNUC_CONST
+g_dbus_variant_equal
+g_dbus_variant_get_array
+g_dbus_variant_get_boolean
+g_dbus_variant_get_byte
+g_dbus_variant_get_double
+g_dbus_variant_get_hash_table
+g_dbus_variant_get_int
+g_dbus_variant_get_int16
+g_dbus_variant_get_int64
+g_dbus_variant_get_object_path
+g_dbus_variant_get_object_path_array
+g_dbus_variant_get_ptr_array
+g_dbus_variant_get_signature
+g_dbus_variant_get_signature_array
+g_dbus_variant_get_string
+g_dbus_variant_get_string_array
+g_dbus_variant_get_structure
+g_dbus_variant_get_variant
+g_dbus_variant_get_uint
+g_dbus_variant_get_uint16
+g_dbus_variant_get_uint64
+g_dbus_variant_get_variant_signature
+g_dbus_variant_is_array
+g_dbus_variant_is_boolean
+g_dbus_variant_is_byte
+g_dbus_variant_is_double
+g_dbus_variant_is_hash_table
+g_dbus_variant_is_int
+g_dbus_variant_is_int16
+g_dbus_variant_is_int64
+g_dbus_variant_is_object_path
+g_dbus_variant_is_object_path_array
+g_dbus_variant_is_ptr_array
+g_dbus_variant_is_signature
+g_dbus_variant_is_signature_array
+g_dbus_variant_is_string
+g_dbus_variant_is_string_array
+g_dbus_variant_is_structure
+g_dbus_variant_is_variant
+g_dbus_variant_is_uint
+g_dbus_variant_is_uint16
+g_dbus_variant_is_uint64
+g_dbus_variant_is_unset
+g_dbus_variant_new
+g_dbus_variant_new_for_array
+g_dbus_variant_new_for_boolean
+g_dbus_variant_new_for_byte
+g_dbus_variant_new_for_double
+g_dbus_variant_new_for_hash_table
+g_dbus_variant_new_for_int
+g_dbus_variant_new_for_int16
+g_dbus_variant_new_for_int64
+g_dbus_variant_new_for_object_path
+g_dbus_variant_new_for_object_path_array
+g_dbus_variant_new_for_ptr_array
+g_dbus_variant_new_for_signature
+g_dbus_variant_new_for_signature_array
+g_dbus_variant_new_for_string
+g_dbus_variant_new_for_string_array
+g_dbus_variant_new_for_structure
+g_dbus_variant_new_for_variant
+g_dbus_variant_new_for_uint
+g_dbus_variant_new_for_uint16
+g_dbus_variant_new_for_uint64
+g_dbus_variant_set_array
+g_dbus_variant_set_boolean
+g_dbus_variant_set_byte
+g_dbus_variant_set_double
+g_dbus_variant_set_hash_table
+g_dbus_variant_set_int
+g_dbus_variant_set_int16
+g_dbus_variant_set_int64
+g_dbus_variant_set_object_path
+g_dbus_variant_set_object_path_array
+g_dbus_variant_set_ptr_array
+g_dbus_variant_set_signature
+g_dbus_variant_set_signature_array
+g_dbus_variant_set_string
+g_dbus_variant_set_string_array
+g_dbus_variant_set_structure
+g_dbus_variant_set_variant
+g_dbus_variant_set_uint
+g_dbus_variant_set_uint16
+g_dbus_variant_set_uint64
+#endif
+#endif

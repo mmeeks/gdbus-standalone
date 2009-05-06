@@ -1,0 +1,47 @@
+<?xml version="1.0"?>
+<!DOCTYPE book PUBLIC "-//OASIS//DTD DocBook XML V4.1.2//EN"
+               "http://www.oasis-open.org/docbook/xml/4.1.2/docbookx.dtd" [
+<!ENTITY version SYSTEM "version.xml">
+]>
+<book lang="en" id="gdbus" xmlns:xi="http://www.w3.org/2003/XInclude">
+<title>GDBus Standalone Reference Manual</title>
+  <bookinfo>
+    <title>GDBus Standalone Reference Manual</title>
+    <releaseinfo>
+      for GDBus Standalone &version;
+    </releaseinfo>
+  </bookinfo>
+
+  <part>
+  <title>API Reference</title>
+    <chapter id="lowlevel">
+        <title>Low-level GDBus</title>
+        <xi:include href="xml/gdbusmainloop.xml"/>
+        <xi:include href="xml/gdbuserror.xml"/>
+        <xi:include href="xml/gdbusconnection.xml"/>
+        <xi:include href="xml/gbusnameowner.xml"/>
+        <xi:include href="xml/gbusnamewatcher.xml"/>
+    </chapter>
+    <chapter id="convenience">
+        <title>GDBus Convenience</title>
+        <xi:include href="xml/gdbusnamewatching.xml"/>
+        <xi:include href="xml/gdbusnameowning.xml"/>
+    </chapter>
+    <chapter id="cmapping">
+        <title>C Object Mapping</title>
+        <xi:include href="xml/gdbusctypemapping.xml"/>
+        <xi:include href="xml/gdbusproxy.xml"/>
+        <xi:include href="xml/gdbusvariant.xml"/>
+        <xi:include href="xml/gdbusstructure.xml"/>
+    </chapter>
+  </part>
+
+  <chapter id="gdbus-hierarchy">
+    <title>Object Hierarchy</title>
+      <xi:include href="xml/tree_index.sgml"/>
+  </chapter>
+
+  <index>
+    <title id="index-all">Index</title>
+  </index>
+</book>
