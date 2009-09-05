@@ -44,33 +44,34 @@ typedef void (*GDBusSignalCallback1) (GDBusConnection  *connection,
                                       DBusMessage      *message,
                                       gpointer          user_data);
 
-DBusConnection  *g_dbus_connection_get_dbus_1_connection                 (GDBusConnection    *connection);
-void             g_dbus_connection_send_dbus_1_message                   (GDBusConnection    *connection,
-                                                                          DBusMessage        *message);
-guint            g_dbus_connection_send_dbus_1_message_with_reply        (GDBusConnection    *connection,
-                                                                          DBusMessage        *message,
-                                                                          gint                timeout_msec,
-                                                                          GCancellable       *cancellable,
-                                                                          GAsyncReadyCallback callback,
-                                                                          gpointer            user_data);
-void             g_dbus_connection_send_dbus_1_message_block             (GDBusConnection    *connection,
-                                                                          guint               pending_call_id);
-void             g_dbus_connection_send_dbus_1_message_cancel            (GDBusConnection    *connection,
-                                                                          guint               pending_call_id);
-DBusMessage     *g_dbus_connection_send_dbus_1_message_with_reply_finish (GDBusConnection    *connection,
-                                                                          GAsyncResult       *res,
-                                                                          GError            **error);
-guint            g_dbus_connection_dbus_1_signal_subscribe               (GDBusConnection    *connection,
-                                                                          const gchar        *sender,
-                                                                          const gchar        *interface_name,
-                                                                          const gchar        *member,
-                                                                          const gchar        *object_path,
-                                                                          const gchar        *arg0,
-                                                                          GDBusSignalCallback1 callback,
-                                                                          gpointer            user_data,
-                                                                          GDestroyNotify      user_data_free_func);
-void             g_dbus_connection_dbus_1_signal_unsubscribe             (GDBusConnection    *connection,
-                                                                          guint               subscription_id);
+DBusConnection  *g_dbus_connection_get_dbus_1_connection                    (GDBusConnection    *connection);
+void             g_dbus_connection_send_dbus_1_message                      (GDBusConnection    *connection,
+                                                                             DBusMessage        *message);
+void             g_dbus_connection_send_dbus_1_message_with_reply           (GDBusConnection    *connection,
+                                                                             DBusMessage        *message,
+                                                                             gint                timeout_msec,
+                                                                             GCancellable       *cancellable,
+                                                                             GAsyncReadyCallback callback,
+                                                                             gpointer            user_data);
+DBusMessage     *g_dbus_connection_send_dbus_1_message_with_reply_finish    (GDBusConnection    *connection,
+                                                                             GAsyncResult       *res,
+                                                                             GError            **error);
+DBusMessage     *g_dbus_connection_send_dbus_1_message_with_reply_sync      (GDBusConnection    *connection,
+                                                                             DBusMessage        *message,
+                                                                             gint                timeout_msec,
+                                                                             GCancellable       *cancellable,
+                                                                             GError            **error);
+guint            g_dbus_connection_dbus_1_signal_subscribe                  (GDBusConnection    *connection,
+                                                                             const gchar        *sender,
+                                                                             const gchar        *interface_name,
+                                                                             const gchar        *member,
+                                                                             const gchar        *object_path,
+                                                                             const gchar        *arg0,
+                                                                             GDBusSignalCallback1 callback,
+                                                                             gpointer            user_data,
+                                                                             GDestroyNotify      user_data_free_func);
+void             g_dbus_connection_dbus_1_signal_unsubscribe                (GDBusConnection    *connection,
+                                                                             guint               subscription_id);
 
 G_END_DECLS
 

@@ -56,7 +56,6 @@ struct _GDBusProxy
 
 /**
  * GDBusProxyClass:
- * @properties_available_changed: Signal class handler for the #GDBusProxy::g-dbus-proxy-properties-available-changed signal.
  * @properties_changed: Signal class handler for the #GDBusProxy::g-dbus-proxy-properties-changed signal.
  * @signal: Signal class handler for the #GDBusProxy::g-dbus-proxy-signal signal.
  *
@@ -68,8 +67,6 @@ struct _GDBusProxyClass
   GObjectClass parent_class;
 
   /*< public >*/
-  void (*properties_available_changed) (GDBusProxy   *proxy,
-                                        gboolean      properties_available);
   void (*properties_changed)           (GDBusProxy   *proxy,
                                         GHashTable   *changed_properties);
   void (*signal)                       (GDBusProxy   *proxy,
@@ -90,19 +87,30 @@ struct _GDBusProxyClass
 };
 
 GType            g_dbus_proxy_get_type                    (void) G_GNUC_CONST;
-GDBusProxy      *g_dbus_proxy_new                         (GDBusConnection     *connection,
+void             g_dbus_proxy_new                         (GDBusConnection     *connection,
                                                            GDBusProxyFlags      flags,
-                                                           const gchar         *name,
+                                                           const gchar         *unique_bus_name,
                                                            const gchar         *object_path,
-                                                           const gchar         *interface_name);
+                                                           const gchar         *interface_name,
+                                                           GCancellable        *cancellable,
+                                                           GAsyncReadyCallback  callback,
+                                                           gpointer             user_data);
+GDBusProxy      *g_dbus_proxy_new_finish                  (GAsyncResult        *res,
+                                                           GError             **error);
+GDBusProxy      *g_dbus_proxy_new_sync                    (GDBusConnection     *connection,
+                                                           GDBusProxyFlags      flags,
+                                                           const gchar         *unique_bus_name,
+                                                           const gchar         *object_path,
+                                                           const gchar         *interface_name,
+                                                           GCancellable        *cancellable,
+                                                           GError             **error);
 GDBusConnection *g_dbus_proxy_get_connection              (GDBusProxy          *proxy);
 GDBusProxyFlags  g_dbus_proxy_get_flags                   (GDBusProxy          *proxy);
-const gchar     *g_dbus_proxy_get_name                    (GDBusProxy          *proxy);
-const gchar     *g_dbus_proxy_get_name_owner              (GDBusProxy          *proxy);
+const gchar     *g_dbus_proxy_get_unique_bus_name         (GDBusProxy          *proxy);
 const gchar     *g_dbus_proxy_get_object_path             (GDBusProxy          *proxy);
 const gchar     *g_dbus_proxy_get_interface_name          (GDBusProxy          *proxy);
-guint            g_dbus_proxy_invoke_method               (GDBusProxy          *proxy,
-                                                           const gchar         *name,
+void             g_dbus_proxy_invoke_method               (GDBusProxy          *proxy,
+                                                           const gchar         *method_name,
                                                            const gchar         *signature,
                                                            guint                timeout_msec,
                                                            GCancellable        *cancellable,
@@ -116,12 +124,8 @@ gboolean         g_dbus_proxy_invoke_method_finish        (GDBusProxy          *
                                                            GError             **error,
                                                            GType                first_out_arg_type,
                                                            ...);
-void             g_dbus_proxy_invoke_method_block         (GDBusProxy          *proxy,
-                                                           guint                pending_call_id);
-void             g_dbus_proxy_invoke_method_cancel        (GDBusProxy          *proxy,
-                                                           guint                pending_call_id);
 gboolean         g_dbus_proxy_invoke_method_sync          (GDBusProxy          *proxy,
-                                                           const gchar         *name,
+                                                           const gchar         *method_name,
                                                            const gchar         *in_signature,
                                                            const gchar         *out_signature,
                                                            guint                timeout_msec,
@@ -129,7 +133,6 @@ gboolean         g_dbus_proxy_invoke_method_sync          (GDBusProxy          *
                                                            GError             **error,
                                                            GType                first_in_arg_type,
                                                            ...);
-gboolean         g_dbus_proxy_get_properties_available    (GDBusProxy          *proxy);
 GDBusVariant    *g_dbus_proxy_get_cached_property         (GDBusProxy          *proxy,
                                                            const gchar         *property_name,
                                                            GError             **error);

@@ -53,8 +53,9 @@ gdbus_headers =				\
 	gdbusconnection.h		\
 	gbusnameowner.h			\
 	gbusnamewatcher.h		\
-	gdbusnamewatching.h		\
 	gdbusnameowning.h		\
+	gdbusnamewatching.h		\
+	gdbusproxywatching.h		\
 	gdbusproxy.h			\
 	gdbusstructure.h		\
 	gdbusvariant.h			\
@@ -75,8 +76,9 @@ libgdbus_standalone_la_SOURCES =					\
 	gdbusconnection.h		gdbusconnection.c		\
 	gbusnameowner.h			gbusnameowner.c			\
 	gbusnamewatcher.h		gbusnamewatcher.c		\
-	gdbusnamewatching.h		gdbusnamewatching.c		\
 	gdbusnameowning.h		gdbusnameowning.c		\
+	gdbusnamewatching.h		gdbusnamewatching.c		\
+	gdbusproxywatching.h		gdbusproxywatching.c		\
 	gdbusproxy.h			gdbusproxy.c			\
 	gdbusstructure.h		gdbusstructure.c		\
 	gdbusvariant.h			gdbusvariant.c			\
@@ -172,10 +174,15 @@ gdbusenumtypes.c: $(gdbus_headers) gdbusenumtypes.c.template Makefile.am
 noinst_PROGRAMS =
 noinst_PROGRAMS += example-own-name
 noinst_PROGRAMS += example-watch-name
+noinst_PROGRAMS += example-watch-proxy
 
 example_watch_name_SOURCES = example-watch-name.c
 example_watch_name_CFLAGS  = $(GLIB2_CFLAGS) $(GOBJECT2_CFLAGS) $(GIO2_CFLAGS)
 example_watch_name_LDADD   = libgdbus-standalone.la  $(GLIB2_LIBS) $(GOBJECT2_LIBS) $(GIO2_LIBS)
+
+example_watch_proxy_SOURCES = example-watch-proxy.c
+example_watch_proxy_CFLAGS  = $(GLIB2_CFLAGS) $(GOBJECT2_CFLAGS) $(GIO2_CFLAGS)
+example_watch_proxy_LDADD   = libgdbus-standalone.la  $(GLIB2_LIBS) $(GOBJECT2_LIBS) $(GIO2_LIBS)
 
 example_own_name_SOURCES = example-own-name.c
 example_own_name_CFLAGS  = $(GLIB2_CFLAGS) $(GOBJECT2_CFLAGS) $(GIO2_CFLAGS)

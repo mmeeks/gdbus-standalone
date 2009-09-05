@@ -555,7 +555,7 @@ g_dbus_variant_new_for_structure (GDBusStructure *structure)
 }
 
 /**
- * g_dbus_variant_new_for_structure:
+ * g_dbus_variant_new_for_variant:
  * @variant: A #GDBusVariant.
  *
  * Creates a new variant that holds a reference to @variant.
@@ -945,7 +945,7 @@ g_dbus_variant_set_structure (GDBusVariant   *variant,
 }
 
 /**
- * g_dbus_variant_set_structure:
+ * g_dbus_variant_set_variant:
  * @variant: A #GDBusVariant.
  * @other_variant: A #GDBusVariant.
  *

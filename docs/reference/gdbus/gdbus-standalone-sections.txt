@@ -43,8 +43,7 @@ g_dbus_connection_signal_unsubscribe
 g_dbus_connection_get_dbus_1_connection
 g_dbus_connection_send_dbus_1_message
 g_dbus_connection_send_dbus_1_message_with_reply
-g_dbus_connection_send_dbus_1_message_block
-g_dbus_connection_send_dbus_1_message_cancel
+g_dbus_connection_send_dbus_1_message_with_reply_sync
 g_dbus_connection_send_dbus_1_message_with_reply_finish
 GDBusSignalCallback1
 g_dbus_connection_dbus_1_signal_subscribe
@@ -90,6 +89,14 @@ g_bus_unwatch_name
 </SECTION>
 
 <SECTION>
+<FILE>gdbusproxywatching</FILE>
+GBusProxyAppearedCallback
+GBusProxyVanishedCallback
+g_bus_watch_proxy
+g_bus_unwatch_proxy
+</SECTION>
+
+<SECTION>
 <FILE>gdbusmainloop</FILE>
 g_dbus_integrate_dbus_1_connection
 g_dbus_unintegrate_dbus_1_connection
@@ -130,17 +137,15 @@ GDBusProxyFlags
 GDBusProxy
 GDBusProxyClass
 g_dbus_proxy_new
+g_dbus_proxy_new_finish
+g_dbus_proxy_new_sync
 g_dbus_proxy_get_flags
 g_dbus_proxy_get_connection
-g_dbus_proxy_get_interface_name
-g_dbus_proxy_get_name
-g_dbus_proxy_get_name_owner
+g_dbus_proxy_get_unique_bus_name
 g_dbus_proxy_get_object_path
-g_dbus_proxy_get_properties_available
+g_dbus_proxy_get_interface_name
 g_dbus_proxy_get_cached_property
 g_dbus_proxy_invoke_method
-g_dbus_proxy_invoke_method_block
-g_dbus_proxy_invoke_method_cancel
 g_dbus_proxy_invoke_method_finish
 g_dbus_proxy_invoke_method_sync
 <SUBSECTION Standard>

@@ -22,6 +22,7 @@
 
 #include <gdbus/gdbus.h>
 #include <unistd.h>
+#include <string.h>
 
 #include "tests.h"
 
@@ -33,10 +34,10 @@ static GMainLoop *loop = NULL;
 /* ---------------------------------------------------------------------------------------------------- */
 
 static void
-proxy_on_name_appeared (GDBusConnection *connection,
-                        const gchar     *name,
-                        const gchar     *name_owner,
-                        gpointer         user_data)
+marshalling_on_name_appeared (GDBusConnection *connection,
+                              const gchar     *name,
+                              const gchar     *name_owner,
+                              gpointer         user_data)
 {
   GDBusProxy *frob;
   GError     *error;
@@ -129,12 +130,15 @@ proxy_on_name_appeared (GDBusConnection *connection,
 
   error = NULL;
 
-  frob = g_dbus_proxy_new (connection,
-                           G_DBUS_PROXY_FLAGS_NONE,
-                           name,
-                           "/com/example/TestObject",
-                           "com.example.Frob");
-  _g_assert_signal_received (frob, "g-dbus-proxy-properties-available-changed");
+  frob = g_dbus_proxy_new_sync (connection,
+                                G_DBUS_PROXY_FLAGS_NONE,
+                                name_owner,
+                                "/com/example/TestObject",
+                                "com.example.Frob",
+                                NULL,
+                                &error);
+  g_assert_no_error (error);
+  g_assert (frob != NULL);
 
   ret = g_dbus_proxy_invoke_method_sync (frob,
                                          "HelloWorld",
@@ -901,9 +905,9 @@ proxy_on_name_appeared (GDBusConnection *connection,
 }
 
 static void
-proxy_on_name_vanished (GDBusConnection *connection,
-                        const gchar     *name,
-                        gpointer         user_data)
+marshalling_on_name_vanished (GDBusConnection *connection,
+                              const gchar     *name,
+                              gpointer         user_data)
 {
 }
 
@@ -916,8 +920,8 @@ test_proxy_marshalling (void)
 
   watcher_id = g_bus_watch_name (G_BUS_TYPE_SESSION,
                                  "com.example.TestService",
-                                 proxy_on_name_appeared,
-                                 proxy_on_name_vanished,
+                                 marshalling_on_name_appeared,
+                                 marshalling_on_name_vanished,
                                  NULL);
 
   /* TODO: wait a bit for the bus to come up.. ideally session_bus_up() won't return
@@ -940,98 +944,30 @@ test_proxy_marshalling (void)
 /* ---------------------------------------------------------------------------------------------------- */
 
 static void
-test_proxy_properties (void)
+properties_on_proxy_appeared (GDBusConnection *connection,
+                              const gchar     *name,
+                              const gchar     *name_owner,
+                              GDBusProxy      *proxy,
+                              gpointer         user_data)
 {
-  GDBusConnection *c;
-  GDBusProxy *frob;
-  gboolean ret;
   GError *error;
   GDBusVariant *variant;
   GDBusVariant *variant2;
+  gboolean ret;
 
   error = NULL;
 
-  session_bus_up ();
-
-  c = g_dbus_connection_bus_get (G_BUS_TYPE_SESSION);
-  g_dbus_connection_set_exit_on_close (c, FALSE);
-  frob = g_dbus_proxy_new (c,
-                           G_DBUS_PROXY_FLAGS_NONE,
-                           "com.example.TestService",
-                           "/com/example/TestObject",
-                           "com.example.Frob");
-  g_assert (!g_dbus_proxy_get_properties_available (frob));
-
-
-  /* TODO: wait a bit for the bus to come up.. ideally session_bus_up() won't return
-   * until one can connect to the bus but that's not how things work right now
-   */
-  usleep (500 * 1000);
-
-  /* this is safe; testserver will exit once the bus goes away */
-  g_assert (g_spawn_command_line_async ("./testserver.py", NULL));
-
   /**
-   * Once com.example.TestService appears on the bus we should start loading properties.
+   * Check that we can read cached properties.
+   *
+   * No need to test all properties - we've already tested GDBusVariant
    */
-  _g_assert_signal_received (frob, "g-dbus-proxy-properties-available-changed");
-  g_assert (g_dbus_proxy_get_properties_available (frob));
-
-  /**
-   * If the service disappears and reappears, check
-   *  1. that we receive #GDBusProxy::g-dbus-proxy-properties-available-changed
-   *  2. notification on #GDBusProxy:g-dbus-proxy-properties-available
-   */
-  /* case 1 */
-  ret = g_dbus_proxy_invoke_method_sync (frob, "Quit", "", "", -1, NULL, &error, G_TYPE_INVALID, G_TYPE_INVALID);
-  g_assert_no_error (error);
-  g_assert (ret);
-  _g_assert_signal_received (frob, "g-dbus-proxy-properties-available-changed");
-  g_assert (!g_dbus_proxy_get_properties_available (frob));
-  /* case 2 */
-  g_assert (g_spawn_command_line_async ("./testserver.py", NULL));
-  _g_assert_property_notify (frob, "g-dbus-proxy-properties-available");
-  g_assert (g_dbus_proxy_get_properties_available (frob));
-  ret = g_dbus_proxy_invoke_method_sync (frob, "Quit", "", "", -1, NULL, &error, G_TYPE_INVALID, G_TYPE_INVALID);
-  g_assert_no_error (error);
-  g_assert (ret);
-  _g_assert_property_notify (frob, "g-dbus-proxy-properties-available");
-  g_assert (!g_dbus_proxy_get_properties_available (frob));
-
-  /**
-   *  Also check that we get notified about the name owner, e.g.#GDBusProxy:g-dbus-proxy-name-owner
-   */
-  g_assert_cmpstr (g_dbus_proxy_get_name_owner (frob), ==, NULL);
-  g_assert (g_spawn_command_line_async ("./testserver.py", NULL));
-  _g_assert_property_notify (frob, "g-dbus-proxy-name-owner");
-  g_assert_cmpstr (g_dbus_proxy_get_name_owner (frob), !=, NULL);
-  ret = g_dbus_proxy_invoke_method_sync (frob, "Quit", "", "", -1, NULL, &error, G_TYPE_INVALID, G_TYPE_INVALID);
-  g_assert_no_error (error);
-  g_assert (ret);
-  _g_assert_property_notify (frob, "g-dbus-proxy-name-owner");
-  g_assert_cmpstr (g_dbus_proxy_get_name_owner (frob), ==, NULL);
-
-  /**
-   * Check that trying to access properties when they're not there will return an error
-   */
-  variant = g_dbus_proxy_get_cached_property (frob, "y", &error);
-  g_assert (variant == NULL);
-  g_assert_error (error, G_DBUS_ERROR, G_DBUS_ERROR_FAILED);
-  g_error_free (error);
-  error = NULL;
-
-  /**
-   * Bring up the service, wait for properties and check we can access them
-   */
-  g_assert (g_spawn_command_line_async ("./testserver.py", NULL));
-  _g_assert_property_notify (frob, "g-dbus-proxy-properties-available");
-  /* don't want to test all properties, we already have tests for GDBusVariant */
-  variant = g_dbus_proxy_get_cached_property (frob, "y", &error);
+  variant = g_dbus_proxy_get_cached_property (proxy, "y", &error);
   g_assert_no_error (error);
   g_assert (variant != NULL);
   g_assert_cmpint (g_dbus_variant_get_byte (variant), ==, 1);
   g_object_unref (variant);
-  variant = g_dbus_proxy_get_cached_property (frob, "o", &error);
+  variant = g_dbus_proxy_get_cached_property (proxy, "o", &error);
   g_assert_no_error (error);
   g_assert (variant != NULL);
   g_assert_cmpstr (g_dbus_variant_get_object_path (variant), ==, "/some/path");
@@ -1042,7 +978,7 @@ test_proxy_properties (void)
    * is received. Also check that the cache is updated.
    */
   variant2 = g_dbus_variant_new_for_byte (42);
-  ret = g_dbus_proxy_invoke_method_sync (frob, "FrobSetProperty", "sv", "",
+  ret = g_dbus_proxy_invoke_method_sync (proxy, "FrobSetProperty", "sv", "",
                                          -1, NULL, &error,
                                          G_TYPE_STRING, "y",
                                          G_TYPE_DBUS_VARIANT, variant2,
@@ -1051,16 +987,52 @@ test_proxy_properties (void)
   g_assert_no_error (error);
   g_assert (ret);
   g_object_unref (variant2);
-  _g_assert_signal_received (frob, "g-dbus-proxy-properties-changed");
-  variant = g_dbus_proxy_get_cached_property (frob, "y", &error);
+  _g_assert_signal_received (proxy, "g-dbus-proxy-properties-changed");
+  variant = g_dbus_proxy_get_cached_property (proxy, "y", &error);
   g_assert_no_error (error);
   g_assert (variant != NULL);
   g_assert_cmpint (g_dbus_variant_get_byte (variant), ==, 42);
   g_object_unref (variant);
 
-  g_object_unref (frob);
-  g_object_unref (c);
+  g_main_loop_quit (loop);
+}
 
+static void
+properties_on_proxy_vanished (GDBusConnection *connection,
+                              const gchar     *name,
+                              gpointer         user_data)
+{
+}
+
+static void
+test_proxy_properties (void)
+{
+  guint watcher_id;
+
+  session_bus_up ();
+
+  watcher_id = g_bus_watch_proxy (G_BUS_TYPE_SESSION,
+                                  "com.example.TestService",
+                                  "/com/example/TestObject",
+                                  "com.example.Frob",
+                                  G_TYPE_DBUS_PROXY,
+                                  G_DBUS_PROXY_FLAGS_NONE,
+                                  properties_on_proxy_appeared,
+                                  properties_on_proxy_vanished,
+                                  NULL);
+
+  /* TODO: wait a bit for the bus to come up.. ideally session_bus_up() won't return
+   * until one can connect to the bus but that's not how things work right now
+   */
+  usleep (500 * 1000);
+  /* this is safe; testserver will exit once the bus goes away */
+  g_assert (g_spawn_command_line_async ("./testserver.py", NULL));
+
+  g_main_loop_run (loop);
+
+  g_bus_unwatch_proxy (watcher_id);
+
+  /* tear down bus */
   session_bus_down ();
 }
 
@@ -1076,7 +1048,7 @@ test_proxy_signals_on_signal (GDBusProxy  *proxy,
                               gpointer     user_data)
 {
   GString *s = user_data;
-  GDBusVariant *variant2;
+  GDBusVariant *variant;
 
   g_assert_cmpstr (signature, ==, "sov");
   g_assert_cmpint (args->len, ==, 3);
@@ -1090,56 +1062,70 @@ test_proxy_signals_on_signal (GDBusProxy  *proxy,
   g_string_append_c (s, ',');
   g_string_append (s, g_dbus_variant_get_object_path (G_DBUS_VARIANT (args->pdata[1])));
   g_string_append_c (s, ',');
-  variant2 = g_dbus_variant_get_variant (G_DBUS_VARIANT (args->pdata[2]));
-  g_assert (g_dbus_variant_is_string (variant2));
-  g_string_append (s, g_dbus_variant_get_string (variant2));
+  variant = g_dbus_variant_get_variant (G_DBUS_VARIANT (args->pdata[2]));
+  g_assert (g_dbus_variant_is_string (variant));
+  g_string_append (s, g_dbus_variant_get_string (variant));
+}
+
+
+typedef struct
+{
+  GMainLoop *internal_loop;
+  GString *s;
+} TestSignalData;
+
+static void
+test_proxy_signals_on_emit_signal_cb (GDBusProxy   *proxy,
+                                      GAsyncResult *res,
+                                      gpointer      user_data)
+{
+  TestSignalData *data = user_data;
+  GError *error;
+  gboolean ret;
+
+  error = NULL;
+  ret = g_dbus_proxy_invoke_method_finish (proxy,
+                                           "",
+                                           res,
+                                           &error,
+                                           G_TYPE_INVALID);
+  g_assert_no_error (error);
+  g_assert (ret);
+
+  /* check that the signal was recieved before we got the method result */
+  g_assert (strlen (data->s->str) > 0);
+
+  /* break out of the loop */
+  g_main_loop_quit (data->internal_loop);
 }
 
 static void
-test_proxy_signals (void)
+signals_on_proxy_appeared (GDBusConnection *connection,
+                           const gchar     *name,
+                           const gchar     *name_owner,
+                           GDBusProxy      *proxy,
+                           gpointer         user_data)
 {
-  GDBusConnection *c;
-  GDBusProxy *frob;
-  gboolean ret;
   GError *error;
+  gboolean ret;
   GString *s;
+  gulong signal_handler_id;
+  TestSignalData data;
 
   error = NULL;
 
-  session_bus_up ();
-
-  c = g_dbus_connection_bus_get (G_BUS_TYPE_SESSION);
-  g_dbus_connection_set_exit_on_close (c, FALSE);
-  frob = g_dbus_proxy_new (c,
-                           G_DBUS_PROXY_FLAGS_NONE,
-                           "com.example.TestService",
-                           "/com/example/TestObject",
-                           "com.example.Frob");
-  g_assert (!g_dbus_proxy_get_properties_available (frob));
-
-
-  /* TODO: wait a bit for the bus to come up.. ideally session_bus_up() won't return
-   * until one can connect to the bus but that's not how things work right now
-   */
-  usleep (500 * 1000);
-
-  /* this is safe; testserver will exit once the bus goes away */
-  g_assert (g_spawn_command_line_async ("./testserver.py", NULL));
-  _g_assert_property_notify (frob, "g-dbus-proxy-properties-available");
-  g_assert (g_dbus_proxy_get_properties_available (frob));
-
   /**
-   * Ask the service to emit some signals and check that we receive them.
+   * Ask the service to emit a signal and check that we receive it.
    *
    * Note that blocking calls don't block in the mainloop so wait for the signal (which
    * is dispatched before the method reply)
    */
   s = g_string_new (NULL);
-  g_signal_connect (frob,
-                    "g-dbus-proxy-signal",
-                    G_CALLBACK (test_proxy_signals_on_signal),
-                    s);
-  ret = g_dbus_proxy_invoke_method_sync (frob, "EmitSignal", "so", "",
+  signal_handler_id = g_signal_connect (proxy,
+                                        "g-dbus-proxy-signal",
+                                        G_CALLBACK (test_proxy_signals_on_signal),
+                                        s);
+  ret = g_dbus_proxy_invoke_method_sync (proxy, "EmitSignal", "so", "",
                                          -1, NULL, &error,
                                          G_TYPE_STRING, "Accept the next proposition you hear",
                                          G_TYPE_STRING, "/some/path",
@@ -1147,42 +1133,80 @@ test_proxy_signals (void)
                                          G_TYPE_INVALID);
   g_assert_no_error (error);
   g_assert (ret);
-  _g_assert_signal_received (frob, "g-dbus-proxy-signal");
-  g_assert_cmpstr (s->str, ==, "TestSignal:Accept the next proposition you hear .. in bed!,/some/path/in/bed,a variant");
-
-  /**
-   * Make the service quit, bring it back up and then try again (with the same proxy).
-   *
-   * This checks that D-Bus signals are properly reconnected to the unique name of the
-   * instance who currently owns the name.
-   */
-  /* nuke and bring up */
-  ret = g_dbus_proxy_invoke_method_sync (frob, "Quit", "", "", -1, NULL, &error, G_TYPE_INVALID, G_TYPE_INVALID);
-  g_assert_no_error (error);
-  g_assert (ret);
-  _g_assert_property_notify (frob, "g-dbus-proxy-name-owner");
-  g_assert_cmpstr (g_dbus_proxy_get_name_owner (frob), ==, NULL);
-  g_assert (g_spawn_command_line_async ("./testserver.py", NULL));
-  _g_assert_property_notify (frob, "g-dbus-proxy-name-owner");
-  g_assert_cmpstr (g_dbus_proxy_get_name_owner (frob), !=, NULL);
-  /* again */
-  g_string_set_size (s, 0);
-  ret = g_dbus_proxy_invoke_method_sync (frob, "EmitSignal", "so", "",
-                                         -1, NULL, &error,
-                                         G_TYPE_STRING, "Your present plans are going to succeed",
-                                         G_TYPE_STRING, "/another/path",
-                                         G_TYPE_INVALID,
-                                         G_TYPE_INVALID);
-  g_assert_no_error (error);
-  g_assert (ret);
-  _g_assert_signal_received (frob, "g-dbus-proxy-signal");
-  g_assert_cmpstr (s->str, ==, "TestSignal:Your present plans are going to succeed .. in bed!,/another/path/in/bed,a variant");
-  g_signal_handlers_disconnect_by_func (frob, test_proxy_signals_on_signal, s);
+  /* check that we haven't received the signal just yet */
+  g_assert (strlen (s->str) == 0);
+  /* and now wait for the signal */
+  _g_assert_signal_received (proxy, "g-dbus-proxy-signal");
+  g_assert_cmpstr (s->str,
+                   ==,
+                   "TestSignal:Accept the next proposition you hear .. in bed!,/some/path/in/bed,a variant");
+  g_signal_handler_disconnect (proxy, signal_handler_id);
   g_string_free (s, TRUE);
 
-  g_object_unref (frob);
-  g_object_unref (c);
+  /**
+   * Now do this async to check the signal is received before the method returns.
+   */
+  s = g_string_new (NULL);
+  data.internal_loop = g_main_loop_new (NULL, FALSE);
+  data.s = s;
+  signal_handler_id = g_signal_connect (proxy,
+                                        "g-dbus-proxy-signal",
+                                        G_CALLBACK (test_proxy_signals_on_signal),
+                                        s);
+  g_dbus_proxy_invoke_method (proxy, "EmitSignal", "so",
+                              -1, NULL,
+                              (GAsyncReadyCallback) test_proxy_signals_on_emit_signal_cb,
+                              &data,
+                              G_TYPE_STRING, "You will make a great programmer",
+                              G_TYPE_STRING, "/some/other/path",
+                              G_TYPE_INVALID);
+  g_main_loop_run (data.internal_loop);
+  g_main_loop_unref (data.internal_loop);
+  g_assert_cmpstr (s->str,
+                   ==,
+                   "TestSignal:You will make a great programmer .. in bed!,/some/other/path/in/bed,a variant");
+  g_signal_handler_disconnect (proxy, signal_handler_id);
+  g_string_free (s, TRUE);
 
+  g_main_loop_quit (loop);
+}
+
+static void
+signals_on_proxy_vanished (GDBusConnection *connection,
+                           const gchar     *name,
+                           gpointer         user_data)
+{
+}
+
+static void
+test_proxy_signals (void)
+{
+  guint watcher_id;
+
+  session_bus_up ();
+
+  watcher_id = g_bus_watch_proxy (G_BUS_TYPE_SESSION,
+                                  "com.example.TestService",
+                                  "/com/example/TestObject",
+                                  "com.example.Frob",
+                                  G_TYPE_DBUS_PROXY,
+                                  G_DBUS_PROXY_FLAGS_NONE,
+                                  signals_on_proxy_appeared,
+                                  signals_on_proxy_vanished,
+                                  NULL);
+
+  /* TODO: wait a bit for the bus to come up.. ideally session_bus_up() won't return
+   * until one can connect to the bus but that's not how things work right now
+   */
+  usleep (500 * 1000);
+  /* this is safe; testserver will exit once the bus goes away */
+  g_assert (g_spawn_command_line_async ("./testserver.py", NULL));
+
+  g_main_loop_run (loop);
+
+  g_bus_unwatch_proxy (watcher_id);
+
+  /* tear down bus */
   session_bus_down ();
 }
 

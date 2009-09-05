@@ -63,11 +63,8 @@ extern __typeof (g_dbus_connection_send_dbus_1_message_with_reply) IA__g_dbus_co
 extern __typeof (g_dbus_connection_send_dbus_1_message_with_reply_finish) IA__g_dbus_connection_send_dbus_1_message_with_reply_finish __attribute((visibility("hidden")));
 #define g_dbus_connection_send_dbus_1_message_with_reply_finish IA__g_dbus_connection_send_dbus_1_message_with_reply_finish
 
-extern __typeof (g_dbus_connection_send_dbus_1_message_block) IA__g_dbus_connection_send_dbus_1_message_block __attribute((visibility("hidden")));
-#define g_dbus_connection_send_dbus_1_message_block IA__g_dbus_connection_send_dbus_1_message_block
-
-extern __typeof (g_dbus_connection_send_dbus_1_message_cancel) IA__g_dbus_connection_send_dbus_1_message_cancel __attribute((visibility("hidden")));
-#define g_dbus_connection_send_dbus_1_message_cancel IA__g_dbus_connection_send_dbus_1_message_cancel
+extern __typeof (g_dbus_connection_send_dbus_1_message_with_reply_sync) IA__g_dbus_connection_send_dbus_1_message_with_reply_sync __attribute((visibility("hidden")));
+#define g_dbus_connection_send_dbus_1_message_with_reply_sync IA__g_dbus_connection_send_dbus_1_message_with_reply_sync
 
 extern __typeof (g_dbus_connection_dbus_1_signal_subscribe) IA__g_dbus_connection_dbus_1_signal_subscribe __attribute((visibility("hidden")));
 #define g_dbus_connection_dbus_1_signal_subscribe IA__g_dbus_connection_dbus_1_signal_subscribe
@@ -217,6 +214,16 @@ extern __typeof (g_bus_unwatch_name) IA__g_bus_unwatch_name __attribute((visibil
 
 #endif
 #endif
+#if IN_HEADER(__G_DBUS_PROXY_WATCHING_H__)
+#if IN_FILE(__G_DBUS_PROXY_WATCHING_C__)
+extern __typeof (g_bus_watch_proxy) IA__g_bus_watch_proxy __attribute((visibility("hidden")));
+#define g_bus_watch_proxy IA__g_bus_watch_proxy
+
+extern __typeof (g_bus_unwatch_proxy) IA__g_bus_unwatch_proxy __attribute((visibility("hidden")));
+#define g_bus_unwatch_proxy IA__g_bus_unwatch_proxy
+
+#endif
+#endif
 #if IN_HEADER(__G_DBUS_NAME_OWNING_H__)
 #if IN_FILE(__G_DBUS_NAME_OWNING_C__)
 extern __typeof (g_bus_own_name) IA__g_bus_own_name __attribute((visibility("hidden")));
@@ -235,11 +242,17 @@ extern __typeof (g_dbus_proxy_get_type) IA__g_dbus_proxy_get_type __attribute((v
 extern __typeof (g_dbus_proxy_new) IA__g_dbus_proxy_new __attribute((visibility("hidden")));
 #define g_dbus_proxy_new IA__g_dbus_proxy_new
 
+extern __typeof (g_dbus_proxy_new_finish) IA__g_dbus_proxy_new_finish __attribute((visibility("hidden")));
+#define g_dbus_proxy_new_finish IA__g_dbus_proxy_new_finish
+
+extern __typeof (g_dbus_proxy_new_sync) IA__g_dbus_proxy_new_sync __attribute((visibility("hidden")));
+#define g_dbus_proxy_new_sync IA__g_dbus_proxy_new_sync
+
 extern __typeof (g_dbus_proxy_get_flags) IA__g_dbus_proxy_get_flags __attribute((visibility("hidden")));
 #define g_dbus_proxy_get_flags IA__g_dbus_proxy_get_flags
 
-extern __typeof (g_dbus_proxy_get_name) IA__g_dbus_proxy_get_name __attribute((visibility("hidden")));
-#define g_dbus_proxy_get_name IA__g_dbus_proxy_get_name
+extern __typeof (g_dbus_proxy_get_unique_bus_name) IA__g_dbus_proxy_get_unique_bus_name __attribute((visibility("hidden")));
+#define g_dbus_proxy_get_unique_bus_name IA__g_dbus_proxy_get_unique_bus_name
 
 extern __typeof (g_dbus_proxy_get_object_path) IA__g_dbus_proxy_get_object_path __attribute((visibility("hidden")));
 #define g_dbus_proxy_get_object_path IA__g_dbus_proxy_get_object_path
@@ -250,26 +263,14 @@ extern __typeof (g_dbus_proxy_get_interface_name) IA__g_dbus_proxy_get_interface
 extern __typeof (g_dbus_proxy_get_connection) IA__g_dbus_proxy_get_connection __attribute((visibility("hidden")));
 #define g_dbus_proxy_get_connection IA__g_dbus_proxy_get_connection
 
-extern __typeof (g_dbus_proxy_get_name_owner) IA__g_dbus_proxy_get_name_owner __attribute((visibility("hidden")));
-#define g_dbus_proxy_get_name_owner IA__g_dbus_proxy_get_name_owner
-
 extern __typeof (g_dbus_proxy_invoke_method) IA__g_dbus_proxy_invoke_method __attribute((visibility("hidden")));
 #define g_dbus_proxy_invoke_method IA__g_dbus_proxy_invoke_method
-
-extern __typeof (g_dbus_proxy_invoke_method_block) IA__g_dbus_proxy_invoke_method_block __attribute((visibility("hidden")));
-#define g_dbus_proxy_invoke_method_block IA__g_dbus_proxy_invoke_method_block
-
-extern __typeof (g_dbus_proxy_invoke_method_cancel) IA__g_dbus_proxy_invoke_method_cancel __attribute((visibility("hidden")));
-#define g_dbus_proxy_invoke_method_cancel IA__g_dbus_proxy_invoke_method_cancel
 
 extern __typeof (g_dbus_proxy_invoke_method_finish) IA__g_dbus_proxy_invoke_method_finish __attribute((visibility("hidden")));
 #define g_dbus_proxy_invoke_method_finish IA__g_dbus_proxy_invoke_method_finish
 
 extern __typeof (g_dbus_proxy_invoke_method_sync) IA__g_dbus_proxy_invoke_method_sync __attribute((visibility("hidden")));
 #define g_dbus_proxy_invoke_method_sync IA__g_dbus_proxy_invoke_method_sync
-
-extern __typeof (g_dbus_proxy_get_properties_available) IA__g_dbus_proxy_get_properties_available __attribute((visibility("hidden")));
-#define g_dbus_proxy_get_properties_available IA__g_dbus_proxy_get_properties_available
 
 extern __typeof (g_dbus_proxy_get_cached_property) IA__g_dbus_proxy_get_cached_property __attribute((visibility("hidden")));
 #define g_dbus_proxy_get_cached_property IA__g_dbus_proxy_get_cached_property

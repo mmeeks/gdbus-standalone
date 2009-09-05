@@ -31,8 +31,9 @@
 #include <gdbus/gdbuserror.h>
 #include <gdbus/gbusnameowner.h>
 #include <gdbus/gbusnamewatcher.h>
-#include <gdbus/gdbusnamewatching.h>
 #include <gdbus/gdbusnameowning.h>
+#include <gdbus/gdbusnamewatching.h>
+#include <gdbus/gdbusproxywatching.h>
 #include <gdbus/gdbusproxy.h>
 #include <gdbus/gdbusstructure.h>
 #include <gdbus/gdbusvariant.h>

@@ -66,11 +66,8 @@ extern __typeof (g_dbus_connection_send_dbus_1_message_with_reply) g_dbus_connec
 #undef g_dbus_connection_send_dbus_1_message_with_reply_finish 
 extern __typeof (g_dbus_connection_send_dbus_1_message_with_reply_finish) g_dbus_connection_send_dbus_1_message_with_reply_finish __attribute((alias("IA__g_dbus_connection_send_dbus_1_message_with_reply_finish"), visibility("default")));
 
-#undef g_dbus_connection_send_dbus_1_message_block 
-extern __typeof (g_dbus_connection_send_dbus_1_message_block) g_dbus_connection_send_dbus_1_message_block __attribute((alias("IA__g_dbus_connection_send_dbus_1_message_block"), visibility("default")));
-
-#undef g_dbus_connection_send_dbus_1_message_cancel 
-extern __typeof (g_dbus_connection_send_dbus_1_message_cancel) g_dbus_connection_send_dbus_1_message_cancel __attribute((alias("IA__g_dbus_connection_send_dbus_1_message_cancel"), visibility("default")));
+#undef g_dbus_connection_send_dbus_1_message_with_reply_sync 
+extern __typeof (g_dbus_connection_send_dbus_1_message_with_reply_sync) g_dbus_connection_send_dbus_1_message_with_reply_sync __attribute((alias("IA__g_dbus_connection_send_dbus_1_message_with_reply_sync"), visibility("default")));
 
 #undef g_dbus_connection_dbus_1_signal_subscribe 
 extern __typeof (g_dbus_connection_dbus_1_signal_subscribe) g_dbus_connection_dbus_1_signal_subscribe __attribute((alias("IA__g_dbus_connection_dbus_1_signal_subscribe"), visibility("default")));
@@ -220,6 +217,16 @@ extern __typeof (g_bus_unwatch_name) g_bus_unwatch_name __attribute((alias("IA__
 
 #endif
 #endif
+#if IN_HEADER(__G_DBUS_PROXY_WATCHING_H__)
+#if IN_FILE(__G_DBUS_PROXY_WATCHING_C__)
+#undef g_bus_watch_proxy 
+extern __typeof (g_bus_watch_proxy) g_bus_watch_proxy __attribute((alias("IA__g_bus_watch_proxy"), visibility("default")));
+
+#undef g_bus_unwatch_proxy 
+extern __typeof (g_bus_unwatch_proxy) g_bus_unwatch_proxy __attribute((alias("IA__g_bus_unwatch_proxy"), visibility("default")));
+
+#endif
+#endif
 #if IN_HEADER(__G_DBUS_NAME_OWNING_H__)
 #if IN_FILE(__G_DBUS_NAME_OWNING_C__)
 #undef g_bus_own_name 
@@ -238,11 +245,17 @@ extern __typeof (g_dbus_proxy_get_type) g_dbus_proxy_get_type __attribute((alias
 #undef g_dbus_proxy_new 
 extern __typeof (g_dbus_proxy_new) g_dbus_proxy_new __attribute((alias("IA__g_dbus_proxy_new"), visibility("default")));
 
+#undef g_dbus_proxy_new_finish 
+extern __typeof (g_dbus_proxy_new_finish) g_dbus_proxy_new_finish __attribute((alias("IA__g_dbus_proxy_new_finish"), visibility("default")));
+
+#undef g_dbus_proxy_new_sync 
+extern __typeof (g_dbus_proxy_new_sync) g_dbus_proxy_new_sync __attribute((alias("IA__g_dbus_proxy_new_sync"), visibility("default")));
+
 #undef g_dbus_proxy_get_flags 
 extern __typeof (g_dbus_proxy_get_flags) g_dbus_proxy_get_flags __attribute((alias("IA__g_dbus_proxy_get_flags"), visibility("default")));
 
-#undef g_dbus_proxy_get_name 
-extern __typeof (g_dbus_proxy_get_name) g_dbus_proxy_get_name __attribute((alias("IA__g_dbus_proxy_get_name"), visibility("default")));
+#undef g_dbus_proxy_get_unique_bus_name 
+extern __typeof (g_dbus_proxy_get_unique_bus_name) g_dbus_proxy_get_unique_bus_name __attribute((alias("IA__g_dbus_proxy_get_unique_bus_name"), visibility("default")));
 
 #undef g_dbus_proxy_get_object_path 
 extern __typeof (g_dbus_proxy_get_object_path) g_dbus_proxy_get_object_path __attribute((alias("IA__g_dbus_proxy_get_object_path"), visibility("default")));
@@ -253,26 +266,14 @@ extern __typeof (g_dbus_proxy_get_interface_name) g_dbus_proxy_get_interface_nam
 #undef g_dbus_proxy_get_connection 
 extern __typeof (g_dbus_proxy_get_connection) g_dbus_proxy_get_connection __attribute((alias("IA__g_dbus_proxy_get_connection"), visibility("default")));
 
-#undef g_dbus_proxy_get_name_owner 
-extern __typeof (g_dbus_proxy_get_name_owner) g_dbus_proxy_get_name_owner __attribute((alias("IA__g_dbus_proxy_get_name_owner"), visibility("default")));
-
 #undef g_dbus_proxy_invoke_method 
 extern __typeof (g_dbus_proxy_invoke_method) g_dbus_proxy_invoke_method __attribute((alias("IA__g_dbus_proxy_invoke_method"), visibility("default")));
-
-#undef g_dbus_proxy_invoke_method_block 
-extern __typeof (g_dbus_proxy_invoke_method_block) g_dbus_proxy_invoke_method_block __attribute((alias("IA__g_dbus_proxy_invoke_method_block"), visibility("default")));
-
-#undef g_dbus_proxy_invoke_method_cancel 
-extern __typeof (g_dbus_proxy_invoke_method_cancel) g_dbus_proxy_invoke_method_cancel __attribute((alias("IA__g_dbus_proxy_invoke_method_cancel"), visibility("default")));
 
 #undef g_dbus_proxy_invoke_method_finish 
 extern __typeof (g_dbus_proxy_invoke_method_finish) g_dbus_proxy_invoke_method_finish __attribute((alias("IA__g_dbus_proxy_invoke_method_finish"), visibility("default")));
 
 #undef g_dbus_proxy_invoke_method_sync 
 extern __typeof (g_dbus_proxy_invoke_method_sync) g_dbus_proxy_invoke_method_sync __attribute((alias("IA__g_dbus_proxy_invoke_method_sync"), visibility("default")));
-
-#undef g_dbus_proxy_get_properties_available 
-extern __typeof (g_dbus_proxy_get_properties_available) g_dbus_proxy_get_properties_available __attribute((alias("IA__g_dbus_proxy_get_properties_available"), visibility("default")));
 
 #undef g_dbus_proxy_get_cached_property 
 extern __typeof (g_dbus_proxy_get_cached_property) g_dbus_proxy_get_cached_property __attribute((alias("IA__g_dbus_proxy_get_cached_property"), visibility("default")));

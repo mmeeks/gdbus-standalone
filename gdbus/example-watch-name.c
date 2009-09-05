@@ -1,12 +1,25 @@
 #include <gdbus/gdbus.h>
 
+static gchar *opt_name         = NULL;
+static gboolean opt_system_bus = FALSE;
+
+static GOptionEntry opt_entries[] =
+{
+  { "name", 'n', 0, G_OPTION_ARG_STRING, &opt_name, "Name to watch", NULL },
+  { "system-bus", 's', 0, G_OPTION_ARG_NONE, &opt_system_bus, "Use the system-bus instead of the session-bus", NULL },
+  { NULL}
+};
+
 static void
 on_name_appeared (GDBusConnection *connection,
                   const gchar     *name,
                   const gchar     *name_owner,
                   gpointer         user_data)
 {
-  g_print ("Name %s on the session bus is owned by %s\n", name, name_owner);
+  g_print ("Name %s on %s is owned by %s\n",
+           name,
+           opt_system_bus ? "the system bus" : "the session bus",
+           name_owner);
 }
 
 static void
@@ -14,7 +27,9 @@ on_name_vanished (GDBusConnection *connection,
                   const gchar     *name,
                   gpointer         user_data)
 {
-  g_print ("Name %s does not exists on the session bus\n", name);
+  g_print ("Name %s does not exist on %s\n",
+           name,
+           opt_system_bus ? "the system bus" : "the session bus");
 }
 
 int
@@ -22,35 +37,30 @@ main (int argc, char *argv[])
 {
   guint watcher_id;
   GMainLoop *loop;
-  gchar *opt_name;
   GOptionContext *opt_context;
   GError *error;
-  GOptionEntry opt_entries[] =
-    {
-      { "name", 'n', 0, G_OPTION_ARG_STRING, &opt_name, "Name to watch", NULL },
-      { NULL}
-    };
 
   g_type_init ();
 
   error = NULL;
-  opt_name = NULL;
   opt_context = g_option_context_new ("g_bus_watch_name() example");
+  g_option_context_set_summary (opt_context,
+                                "Example: to watch the power manager on the session bus, use:\n"
+                                "\n"
+                                "  ./example-watch-name -n org.gnome.PowerManager");
   g_option_context_add_main_entries (opt_context, opt_entries, NULL);
   if (!g_option_context_parse (opt_context, &argc, &argv, &error))
     {
       g_printerr ("Error parsing options: %s", error->message);
-      return 1;
+      goto out;
     }
   if (opt_name == NULL)
     {
       g_printerr ("Incorrect usage, try --help.\n");
-      return 1;
+      goto out;
     }
 
-  g_type_init ();
-
-  watcher_id = g_bus_watch_name (G_BUS_TYPE_SESSION,
+  watcher_id = g_bus_watch_name (opt_system_bus ? G_BUS_TYPE_SYSTEM : G_BUS_TYPE_SESSION,
                                  opt_name,
                                  on_name_appeared,
                                  on_name_vanished,
@@ -60,6 +70,10 @@ main (int argc, char *argv[])
   g_main_loop_run (loop);
 
   g_bus_unwatch_name (watcher_id);
+
+ out:
+  g_option_context_free (opt_context);
+  g_free (opt_name);
 
   return 0;
 }

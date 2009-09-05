@@ -24,8 +24,9 @@
     </chapter>
     <chapter id="convenience">
         <title>GDBus Convenience</title>
-        <xi:include href="xml/gdbusnamewatching.xml"/>
         <xi:include href="xml/gdbusnameowning.xml"/>
+        <xi:include href="xml/gdbusnamewatching.xml"/>
+        <xi:include href="xml/gdbusproxywatching.xml"/>
     </chapter>
     <chapter id="cmapping">
         <title>C Object Mapping</title>

@@ -747,6 +747,8 @@ filter_function (DBusConnection *dbus_1_connection,
 {
   GDBusConnection *connection = G_DBUS_CONNECTION (user_data);
 
+  //PRINT_MESSAGE (message);
+
   /* TODO: yikes, this is pretty bad style.. but hard to fix.. see
    *
    *       http://bugzilla.gnome.org/show_bug.cgi?id=579571#c54
@@ -760,7 +762,20 @@ filter_function (DBusConnection *dbus_1_connection,
     connection->priv->idle_processing_messages = g_ptr_array_new ();
   g_ptr_array_add (connection->priv->idle_processing_messages, dbus_message_ref (message));
   if (connection->priv->idle_processing_event_source_id == 0)
-    connection->priv->idle_processing_event_source_id = g_idle_add (process_messages_in_idle, connection);
+    {
+      /* We need to use a high priority such that signals are processed before
+       * replies emitted in idle - otherwise we run into problems with setups
+       * like this
+       *
+       * 1. client asynchronously invokes the method EmitSignal on a remote object Foo
+       * 2. we receive a signal from the Foo object
+       * 3. we recieve a method reply
+       */
+      connection->priv->idle_processing_event_source_id = g_idle_add_full (G_PRIORITY_HIGH,
+                                                                           process_messages_in_idle,
+                                                                           connection,
+                                                                           NULL);
+    }
 
   return DBUS_HANDLER_RESULT_NOT_YET_HANDLED;
 }
@@ -1112,7 +1127,7 @@ send_dbus_1_message_with_reply_cb (DBusPendingCall *pending_call,
       g_assert (reply != NULL);
       g_simple_async_result_set_op_res_gpointer (simple, reply, (GDestroyNotify) dbus_message_unref);
     }
-  g_simple_async_result_complete (simple);
+  g_simple_async_result_complete_in_idle (simple);
   g_object_unref (connection);
   g_object_unref (simple);
 }
@@ -1136,88 +1151,6 @@ send_dbus_1_message_with_reply_cancelled_cb (GCancellable *cancellable,
   dbus_pending_call_cancel (pending_call);
 
   g_idle_add (send_dbus_1_message_with_reply_cancelled_in_idle, simple);
-}
-
-/**
- * g_dbus_connection_send_dbus_1_message_cancel:
- * @connection: A #GDBusConnection.
- * @pending_call_id: A pending call id obtained from g_dbus_connection_send_dbus_1_message_with_reply().
- *
- * <para><note>
- * This function is marked as unstable API. You must include <literal>gdbus/gdbus-lowlevel.h</literal> to use it.
- * </note></para>
- *
- * Cancels the pending call specified by @pending_call_id.
- *
- * The #GAsyncReadyCallback passed to g_dbus_connection_send_dbus_1_message_with_reply() will
- * be invoked in idle (e.g. after this function returns).
- **/
-void
-g_dbus_connection_send_dbus_1_message_cancel (GDBusConnection *connection,
-                                              guint            pending_call_id)
-{
-  GSimpleAsyncResult *simple;
-  DBusPendingCall *pending_call;
-
-  g_return_if_fail (G_IS_DBUS_CONNECTION (connection));
-  g_return_if_fail (pending_call_id != 0);
-
-  G_LOCK (connection_lock);
-  simple = g_hash_table_lookup (connection->priv->pending_call_id_to_simple, GUINT_TO_POINTER (pending_call_id));
-  if (simple == NULL)
-    {
-      g_warning ("Cannot cancel; no pending call with id %d", pending_call_id);
-      goto out;
-    }
-
-  pending_call = g_object_get_data (G_OBJECT (simple), "dbus-1-pending-call");
-  dbus_pending_call_cancel (pending_call);
-
-  g_idle_add (send_dbus_1_message_with_reply_cancelled_in_idle, simple);
-
- out:
-  G_UNLOCK (connection_lock);
-}
-
-/**
- * g_dbus_connection_send_dbus_1_message_block:
- * @connection: A #GDBusConnection.
- * @pending_call_id: A pending call id obtained from g_dbus_connection_send_dbus_1_message_with_reply().
- *
- * <para><note>
- * This function is marked as unstable API. You must include <literal>gdbus/gdbus-lowlevel.h</literal> to use it.
- * </note></para>
- *
- * Blocks until the pending call specified by @pending_call_id is done. This will
- * not block in the main loop. You are guaranteed that the #GAsyncReadyCallback passed to
- * g_dbus_connection_send_dbus_1_message_with_reply() is invoked before this function returns.
- **/
-void
-g_dbus_connection_send_dbus_1_message_block (GDBusConnection *connection,
-                                             guint            pending_call_id)
-{
-  GSimpleAsyncResult *simple;
-  DBusPendingCall *pending_call;
-
-  g_return_if_fail (G_IS_DBUS_CONNECTION (connection));
-  g_return_if_fail (pending_call_id != 0);
-
-  G_LOCK (connection_lock);
-  simple = g_hash_table_lookup (connection->priv->pending_call_id_to_simple, GUINT_TO_POINTER (pending_call_id));
-  if (simple == NULL)
-    {
-      g_warning ("Cannot block; no pending call with id %d", pending_call_id);
-      G_UNLOCK (connection_lock);
-      goto out;
-    }
-
-  pending_call = g_object_get_data (G_OBJECT (simple), "dbus-1-pending-call");
-  dbus_pending_call_ref (pending_call);
-  G_UNLOCK (connection_lock);
-  dbus_pending_call_block (pending_call);
-  dbus_pending_call_unref (pending_call);
- out:
-  ;
 }
 
 /**
@@ -1245,10 +1178,8 @@ g_dbus_connection_send_dbus_1_message_block (GDBusConnection *connection,
  *
  * This function is intended for use by object mappings only.
  *
- * Returns: An pending call id (never 0) for the message that can be used in
- * g_dbus_connection_send_dbus_1_message_cancel() or g_dbus_connection_send_dbus_1_message_block().
  **/
-guint
+void
 g_dbus_connection_send_dbus_1_message_with_reply (GDBusConnection    *connection,
                                                   DBusMessage        *message,
                                                   gint                timeout_msec,
@@ -1256,15 +1187,14 @@ g_dbus_connection_send_dbus_1_message_with_reply (GDBusConnection    *connection
                                                   GAsyncReadyCallback callback,
                                                   gpointer            user_data)
 {
-  guint pending_call_id;
   GSimpleAsyncResult *simple;
   DBusPendingCall *pending_call;
   gulong cancellable_handler_id;
 
-  g_return_val_if_fail (G_IS_DBUS_CONNECTION (connection), 0);
-  g_return_val_if_fail (callback != NULL, 0);
-  g_return_val_if_fail (message != NULL, 0);
-  g_return_val_if_fail (dbus_message_get_type (message) == DBUS_MESSAGE_TYPE_METHOD_CALL, 0);
+  g_return_if_fail (G_IS_DBUS_CONNECTION (connection));
+  g_return_if_fail (callback != NULL);
+  g_return_if_fail (message != NULL);
+  g_return_if_fail (dbus_message_get_type (message) == DBUS_MESSAGE_TYPE_METHOD_CALL);
 
   G_LOCK (connection_lock);
 
@@ -1343,15 +1273,7 @@ g_dbus_connection_send_dbus_1_message_with_reply (GDBusConnection    *connection
     }
 
  out:
-  pending_call_id = connection->priv->global_pending_call_id++; /* TODO: uh uh, handle collisions */
-  g_hash_table_insert (connection->priv->pending_call_id_to_simple,
-                       GUINT_TO_POINTER (pending_call_id),
-                       simple);
-  g_object_set_data (G_OBJECT (simple),
-                     "pending-id",
-                     GUINT_TO_POINTER (pending_call_id));
   G_UNLOCK (connection_lock);
-  return pending_call_id;
 }
 
 /**
@@ -1395,6 +1317,129 @@ g_dbus_connection_send_dbus_1_message_with_reply_finish (GDBusConnection   *conn
 
  out:
   return reply;
+}
+
+/* ---------------------------------------------------------------------------------------------------- */
+
+static void
+send_dbus_1_message_with_reply_sync_cancelled_cb (GCancellable *cancellable,
+                                                  gpointer      user_data)
+{
+  DBusPendingCall *pending_call = user_data;
+
+  dbus_pending_call_cancel (pending_call);
+}
+
+/**
+ * g_dbus_connection_send_dbus_1_message_with_reply_sync:
+ * @connection: A #GDBusConnection.
+ * @message: A #DBusMessage.
+ * @timeout_msec: The timeout in milliseconds or -1 to use the default timeout.
+ * @cancellable: A #GCancellable or %NULL.
+ * @error: Return location for error or %NULL.
+ *
+ * <para><note>
+ * This function is marked as unstable API. You must include <literal>gdbus/gdbus-lowlevel.h</literal> to use it.
+ * </note></para>
+ *
+ * Synchronously sends @message on @connection and blocks the calling
+ * thread until a reply is ready. TODO: some notes about threading and
+ * blocking the mainloop etc.
+ *
+ * Returns: A #DBusMessage or %NULL if @error is set. Free with dbus_message_unref().
+ **/
+DBusMessage *
+g_dbus_connection_send_dbus_1_message_with_reply_sync (GDBusConnection    *connection,
+                                                       DBusMessage        *message,
+                                                       gint                timeout_msec,
+                                                       GCancellable       *cancellable,
+                                                       GError            **error)
+{
+  gulong cancellable_handler_id;
+  DBusMessage *result;
+  DBusPendingCall *pending_call;
+
+  g_return_val_if_fail (G_IS_DBUS_CONNECTION (connection), 0);
+  g_return_val_if_fail (message != NULL, 0);
+  g_return_val_if_fail (dbus_message_get_type (message) == DBUS_MESSAGE_TYPE_METHOD_CALL, 0);
+
+  result = NULL;
+
+  G_LOCK (connection_lock);
+
+  /* don't even send a message if already cancelled */
+  if (g_cancellable_is_cancelled (cancellable))
+    {
+      g_set_error (error,
+                   G_DBUS_ERROR,
+                   G_DBUS_ERROR_CANCELLED,
+                   _("Operation was cancelled"));
+      G_UNLOCK (connection_lock);
+      goto out;
+    }
+
+  if (connection->priv->dbus_1_connection == NULL)
+    {
+      g_set_error (error,
+                   G_DBUS_ERROR,
+                   G_DBUS_ERROR_FAILED,
+                   _("Not connected"));
+      G_UNLOCK (connection_lock);
+      goto out;
+    }
+
+  if (!dbus_connection_send_with_reply (connection->priv->dbus_1_connection,
+                                        message,
+                                        &pending_call,
+                                        timeout_msec))
+    _g_dbus_oom ();
+
+  if (pending_call == NULL)
+    {
+      g_set_error (error,
+                   G_DBUS_ERROR,
+                   G_DBUS_ERROR_FAILED,
+                   _("Not connected"));
+      G_UNLOCK (connection_lock);
+      goto out;
+    }
+
+  cancellable_handler_id = 0;
+  if (cancellable != NULL)
+    {
+      /* use the lock to ensure cancellable-handler-id is set on simple before trying to get it
+       * in send_dbus_1_message_with_reply_cb()
+       */
+      cancellable_handler_id = g_cancellable_connect (cancellable,
+                                                      G_CALLBACK (send_dbus_1_message_with_reply_sync_cancelled_cb),
+                                                      pending_call,
+                                                      NULL);
+    }
+
+  G_UNLOCK (connection_lock);
+
+  /* block without holding the lock */
+  dbus_pending_call_block (pending_call);
+
+  if (cancellable_handler_id > 0)
+    {
+      g_cancellable_disconnect (cancellable,
+                                cancellable_handler_id);
+    }
+
+  result = dbus_pending_call_steal_reply (pending_call);
+  if (pending_call == NULL)
+    {
+      g_set_error (error,
+                   G_DBUS_ERROR,
+                   G_DBUS_ERROR_CANCELLED,
+                   _("Operation was cancelled"));
+    }
+
+  dbus_pending_call_unref (pending_call);
+
+ out:
+  return result;
 }
 
 /* ---------------------------------------------------------------------------------------------------- */
