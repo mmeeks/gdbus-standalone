@@ -471,69 +471,6 @@ g_dbus_connection_get_dbus_1_connection (GDBusConnection *connection)
 
 /* ---------------------------------------------------------------------------------------------------- */
 
-#if 0
-static gboolean
-attempt_connect (GDBusConnection  *connection,
-                 GError          **error)
-{
-  DBusError dbus_error;
-  gboolean ret;
-  DBusConnection *dbus_1_connection;
-
-  ret = FALSE;
-
-  g_assert (connection->priv->dbus_1_connection == NULL);
-
-  dbus_error_init (&dbus_error);
-  g_assert (connection->priv->bus_type != G_BUS_TYPE_NONE); // until we have constructors with @address
-  if (connection->priv->is_private)
-    {
-      dbus_1_connection = dbus_bus_get_private (connection->priv->bus_type,
-                                                &dbus_error);
-    }
-  else
-    {
-      /* For now, get a private bus even if it's shared... This can only
-       * be changed once the bug referenced in filter_function() is resolved.
-       */
-      dbus_1_connection = dbus_bus_get_private (connection->priv->bus_type,
-                                                &dbus_error);
-    }
-
-  if (dbus_1_connection != NULL)
-    {
-      g_dbus_connection_set_dbus_1_connection (connection, dbus_1_connection);
-      dbus_connection_unref (dbus_1_connection);
-
-      /* add match rules for current subscriptions */
-      add_current_signal_subscriptions (connection);
-
-      g_signal_emit (connection, signals[OPENED_SIGNAL], 0);
-      g_object_notify (G_OBJECT (connection), "is-open");
-      ret = TRUE;
-    }
-  else
-    {
-      g_dbus_error_set_dbus_error (error,
-                                   &dbus_error,
-                                   NULL,
-                                   NULL);
-      dbus_error_free (&dbus_error);
-    }
-
-  if (!connection->priv->is_initialized)
-    {
-      connection->priv->is_initialized = TRUE;
-      g_signal_emit (connection, signals[INITIALIZED_SIGNAL], 0);
-      g_object_notify (G_OBJECT (connection), "is-initialized");
-    }
-
-  return ret;
-}
-#endif
-
-/* ---------------------------------------------------------------------------------------------------- */
-
 #define PRINT_MESSAGE(message)                          \
   do {                                                  \
     const gchar *message_type;                          \
