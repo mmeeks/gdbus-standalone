@@ -233,7 +233,7 @@ get_name_owner_cb (GObject      *source_object,
                                                                    res,
                                                                    NULL);
   dbus_error_init (&dbus_error);
-  if (!dbus_set_error_from_message (&dbus_error, reply))
+  if (reply != NULL && !dbus_set_error_from_message (&dbus_error, reply))
     {
       dbus_message_get_args (reply,
                              &dbus_error,

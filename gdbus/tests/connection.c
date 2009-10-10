@@ -327,7 +327,7 @@ test_connection_signals (void)
    */
   if (g_getenv ("G_DBUS_MONITOR") == NULL)
     {
-      c1 = g_dbus_connection_bus_get_sync (G_BUS_TYPE_SESSION, NULL, NULL);
+      c1 = g_dbus_connection_bus_get_private_sync (G_BUS_TYPE_SESSION, NULL, NULL);
       g_assert (c1 != NULL);
       g_assert (!g_dbus_connection_get_is_disconnected (c1));
       g_object_unref (c1);

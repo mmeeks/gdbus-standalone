@@ -65,11 +65,6 @@ struct _GDBusConnectionPrivate
   gboolean exit_on_disconnect;
 
   guint global_pending_call_id;
-  GHashTable *pending_call_id_to_simple;
-
-  /* stack of messages to process in idle */
-  GPtrArray *idle_processing_messages;
-  guint idle_processing_event_source_id;
 
   /* Maps used for signal subscription */
   GHashTable *map_rule_to_signal_data;
@@ -155,22 +150,10 @@ g_dbus_connection_finalize (GObject *object)
   if (connection->priv->initialization_error != NULL)
     g_error_free (connection->priv->initialization_error);
 
-  g_hash_table_destroy (connection->priv->pending_call_id_to_simple);
-
   purge_all_signal_subscriptions (connection);
   g_hash_table_unref (connection->priv->map_rule_to_signal_data);
   g_hash_table_unref (connection->priv->map_id_to_signal_data);
   g_hash_table_unref (connection->priv->map_sender_to_signal_data_array);
-
-  if (connection->priv->idle_processing_event_source_id > 0)
-    {
-      g_source_remove (connection->priv->idle_processing_event_source_id);
-    }
-  if (connection->priv->idle_processing_messages != NULL)
-    {
-      g_ptr_array_foreach (connection->priv->idle_processing_messages, (GFunc) dbus_message_unref, NULL);
-      g_ptr_array_free (connection->priv->idle_processing_messages, TRUE);
-    }
 
   if (G_OBJECT_CLASS (g_dbus_connection_parent_class)->finalize != NULL)
     G_OBJECT_CLASS (g_dbus_connection_parent_class)->finalize (object);
@@ -379,7 +362,6 @@ g_dbus_connection_init (GDBusConnection *connection)
   connection->priv = G_TYPE_INSTANCE_GET_PRIVATE (connection, G_TYPE_DBUS_CONNECTION, GDBusConnectionPrivate);
 
   connection->priv->global_pending_call_id = 1;
-  connection->priv->pending_call_id_to_simple = g_hash_table_new (g_direct_hash, g_direct_equal);
 
   connection->priv->map_rule_to_signal_data = g_hash_table_new (g_str_hash,
                                                                 g_str_equal);
@@ -542,32 +524,6 @@ process_message (GDBusConnection *connection,
   distribute_signals (connection, message);
 }
 
-static gboolean
-process_messages_in_idle (gpointer user_data)
-{
-  GDBusConnection *connection = G_DBUS_CONNECTION (user_data);
-  guint n;
-
-  /* need to own a ref since the signal handlers we call may unref the connection */
-  g_object_ref (connection);
-
-  for (n = 0; n < connection->priv->idle_processing_messages->len; n++)
-    {
-      DBusMessage *message = connection->priv->idle_processing_messages->pdata[n];
-      process_message (connection, message);
-      dbus_message_unref (message);
-    }
-
-  g_ptr_array_remove_range (connection->priv->idle_processing_messages,
-                            0,
-                            connection->priv->idle_processing_messages->len);
-  connection->priv->idle_processing_event_source_id = 0;
-
-  g_object_unref (connection);
-
-  return FALSE;
-}
-
 static DBusHandlerResult
 filter_function (DBusConnection *dbus_1_connection,
                  DBusMessage    *message,
@@ -576,34 +532,7 @@ filter_function (DBusConnection *dbus_1_connection,
   GDBusConnection *connection = G_DBUS_CONNECTION (user_data);
 
   //PRINT_MESSAGE (message);
-
-  /* TODO: yikes, this is pretty bad style.. but hard to fix.. see
-   *
-   *       http://bugzilla.gnome.org/show_bug.cgi?id=579571#c54
-   *
-   * for pointers on how to fix it. Once it is fixed we can change
-   * attempt_connect() to not get a private bus (can't use a shared
-   * bus when we always return NOT_YET_HANDLED).
-   */
-
-  if (connection->priv->idle_processing_messages == NULL)
-    connection->priv->idle_processing_messages = g_ptr_array_new ();
-  g_ptr_array_add (connection->priv->idle_processing_messages, dbus_message_ref (message));
-  if (connection->priv->idle_processing_event_source_id == 0)
-    {
-      /* We need to use a high priority such that signals are processed before
-       * replies emitted in idle - otherwise we run into problems with setups
-       * like this
-       *
-       * 1. client asynchronously invokes the method EmitSignal on a remote object Foo
-       * 2. we receive a signal from the Foo object
-       * 3. we recieve a method reply
-       */
-      connection->priv->idle_processing_event_source_id = g_idle_add_full (G_PRIORITY_HIGH,
-                                                                           process_messages_in_idle,
-                                                                           connection,
-                                                                           NULL);
-    }
+  process_message (connection, message);
 
   return DBUS_HANDLER_RESULT_NOT_YET_HANDLED;
 }
@@ -626,8 +555,7 @@ g_dbus_connection_set_dbus_1_connection (GDBusConnection *connection,
         }
       else
         {
-          /* see attempt_connext() where we still get a private bus even for shared stuff */
-          dbus_connection_close (connection->priv->dbus_1_connection);
+          /* shared connections must not be closed */
         }
       dbus_connection_unref (connection->priv->dbus_1_connection);
     }
@@ -785,11 +713,8 @@ initable_init (GInitable       *initable,
     }
   else
     {
-      /* For now, get a private bus even if it's shared... This can only
-       * be changed once the bug referenced in filter_function() is resolved.
-       */
-      dbus_1_connection = dbus_bus_get_private (connection->priv->bus_type,
-                                                &dbus_error);
+      dbus_1_connection = dbus_bus_get (connection->priv->bus_type,
+                                        &dbus_error);
     }
 
   if (dbus_1_connection != NULL)
@@ -1183,7 +1108,6 @@ send_dbus_1_message_with_reply_cb (DBusPendingCall *pending_call,
   cancellable_handler_id = GPOINTER_TO_UINT (g_object_get_data (G_OBJECT (simple), "cancellable-handler-id"));
   pending_call_id = GPOINTER_TO_UINT (g_object_get_data (G_OBJECT (simple), "pending-id"));
   connection = G_DBUS_CONNECTION (g_async_result_get_source_object (G_ASYNC_RESULT (simple)));
-  g_hash_table_remove (connection->priv->pending_call_id_to_simple, GUINT_TO_POINTER (pending_call_id));
   G_UNLOCK (connection_lock);
 
   cancellable = g_object_get_data (G_OBJECT (simple), "cancellable");

@@ -34,10 +34,10 @@ static GMainLoop *loop = NULL;
 /* ---------------------------------------------------------------------------------------------------- */
 
 static void
-marshalling_on_name_appeared (GDBusConnection *connection,
-                              const gchar     *name,
-                              const gchar     *name_owner,
-                              gpointer         user_data)
+test_marshalling (GDBusConnection *connection,
+                  const gchar     *name,
+                  const gchar     *name_owner,
+                  GDBusProxy      *proxy)
 {
   GDBusProxy *frob;
   GError     *error;
@@ -899,56 +899,19 @@ marshalling_on_name_appeared (GDBusConnection *connection,
   g_ptr_array_unref (aav);
 
   g_object_unref (frob);
-  g_main_loop_quit (loop);
-
 #undef CHECK_ARRAY
 }
 
-static void
-marshalling_on_name_vanished (GDBusConnection *connection,
-                              const gchar     *name,
-                              gpointer         user_data)
-{
-}
-
-static void
-test_proxy_marshalling (void)
-{
-  guint watcher_id;
-
-  session_bus_up ();
-
-  watcher_id = g_bus_watch_name (G_BUS_TYPE_SESSION,
-                                 "com.example.TestService",
-                                 marshalling_on_name_appeared,
-                                 marshalling_on_name_vanished,
-                                 NULL);
-
-  /* TODO: wait a bit for the bus to come up.. ideally session_bus_up() won't return
-   * until one can connect to the bus but that's not how things work right now
-   */
-  usleep (500 * 1000);
-  /* this is safe; testserver will exit once the bus goes away */
-  g_assert (g_spawn_command_line_async ("./testserver.py", NULL));
-
-  g_main_loop_run (loop);
-
-  g_bus_unwatch_name (watcher_id);
-
-  /* tear down bus */
-  session_bus_down ();
-}
 
 /* ---------------------------------------------------------------------------------------------------- */
 /* Test that the property aspects of GDBusProxy works */
 /* ---------------------------------------------------------------------------------------------------- */
 
 static void
-properties_on_proxy_appeared (GDBusConnection *connection,
-                              const gchar     *name,
-                              const gchar     *name_owner,
-                              GDBusProxy      *proxy,
-                              gpointer         user_data)
+test_properties (GDBusConnection *connection,
+                 const gchar     *name,
+                 const gchar     *name_owner,
+                 GDBusProxy      *proxy)
 {
   GError *error;
   GDBusVariant *variant;
@@ -993,47 +956,6 @@ properties_on_proxy_appeared (GDBusConnection *connection,
   g_assert (variant != NULL);
   g_assert_cmpint (g_dbus_variant_get_byte (variant), ==, 42);
   g_object_unref (variant);
-
-  g_main_loop_quit (loop);
-}
-
-static void
-properties_on_proxy_vanished (GDBusConnection *connection,
-                              const gchar     *name,
-                              gpointer         user_data)
-{
-}
-
-static void
-test_proxy_properties (void)
-{
-  guint watcher_id;
-
-  session_bus_up ();
-
-  watcher_id = g_bus_watch_proxy (G_BUS_TYPE_SESSION,
-                                  "com.example.TestService",
-                                  "/com/example/TestObject",
-                                  "com.example.Frob",
-                                  G_TYPE_DBUS_PROXY,
-                                  G_DBUS_PROXY_FLAGS_NONE,
-                                  properties_on_proxy_appeared,
-                                  properties_on_proxy_vanished,
-                                  NULL);
-
-  /* TODO: wait a bit for the bus to come up.. ideally session_bus_up() won't return
-   * until one can connect to the bus but that's not how things work right now
-   */
-  usleep (500 * 1000);
-  /* this is safe; testserver will exit once the bus goes away */
-  g_assert (g_spawn_command_line_async ("./testserver.py", NULL));
-
-  g_main_loop_run (loop);
-
-  g_bus_unwatch_proxy (watcher_id);
-
-  /* tear down bus */
-  session_bus_down ();
 }
 
 /* ---------------------------------------------------------------------------------------------------- */
@@ -1067,7 +989,6 @@ test_proxy_signals_on_signal (GDBusProxy  *proxy,
   g_string_append (s, g_dbus_variant_get_string (variant));
 }
 
-
 typedef struct
 {
   GMainLoop *internal_loop;
@@ -1100,11 +1021,10 @@ test_proxy_signals_on_emit_signal_cb (GDBusProxy   *proxy,
 }
 
 static void
-signals_on_proxy_appeared (GDBusConnection *connection,
-                           const gchar     *name,
-                           const gchar     *name_owner,
-                           GDBusProxy      *proxy,
-                           gpointer         user_data)
+test_signals (GDBusConnection *connection,
+              const gchar     *name,
+              const gchar     *name_owner,
+              GDBusProxy      *proxy)
 {
   GError *error;
   gboolean ret;
@@ -1167,23 +1087,42 @@ signals_on_proxy_appeared (GDBusConnection *connection,
                    "TestSignal:You will make a great programmer .. in bed!,/some/other/path/in/bed,a variant");
   g_signal_handler_disconnect (proxy, signal_handler_id);
   g_string_free (s, TRUE);
+}
+
+/* ---------------------------------------------------------------------------------------------------- */
+
+static void
+on_proxy_appeared (GDBusConnection *connection,
+                   const gchar     *name,
+                   const gchar     *name_owner,
+                   GDBusProxy      *proxy,
+                   gpointer         user_data)
+{
+  test_marshalling (connection, name, name_owner, proxy);
+  test_properties (connection, name, name_owner, proxy);
+  test_signals (connection, name, name_owner, proxy);
 
   g_main_loop_quit (loop);
 }
 
 static void
-signals_on_proxy_vanished (GDBusConnection *connection,
-                           const gchar     *name,
-                           gpointer         user_data)
+on_proxy_vanished (GDBusConnection *connection,
+                   const gchar     *name,
+                   gpointer         user_data)
 {
 }
 
 static void
-test_proxy_signals (void)
+test_proxy (void)
 {
   guint watcher_id;
 
   session_bus_up ();
+
+  /* TODO: wait a bit for the bus to come up.. ideally session_bus_up() won't return
+   * until one can connect to the bus but that's not how things work right now
+   */
+  usleep (500 * 1000);
 
   watcher_id = g_bus_watch_proxy (G_BUS_TYPE_SESSION,
                                   "com.example.TestService",
@@ -1191,14 +1130,10 @@ test_proxy_signals (void)
                                   "com.example.Frob",
                                   G_TYPE_DBUS_PROXY,
                                   G_DBUS_PROXY_FLAGS_NONE,
-                                  signals_on_proxy_appeared,
-                                  signals_on_proxy_vanished,
+                                  on_proxy_appeared,
+                                  on_proxy_vanished,
                                   NULL);
 
-  /* TODO: wait a bit for the bus to come up.. ideally session_bus_up() won't return
-   * until one can connect to the bus but that's not how things work right now
-   */
-  usleep (500 * 1000);
   /* this is safe; testserver will exit once the bus goes away */
   g_assert (g_spawn_command_line_async ("./testserver.py", NULL));
 
@@ -1228,8 +1163,6 @@ main (int   argc,
   g_unsetenv ("DISPLAY");
   g_setenv ("DBUS_SESSION_BUS_ADDRESS", session_bus_get_temporary_address (), TRUE);
 
-  g_test_add_func ("/gdbus/proxy-marshalling", test_proxy_marshalling);
-  g_test_add_func ("/gdbus/proxy-properties", test_proxy_properties);
-  g_test_add_func ("/gdbus/proxy-signals", test_proxy_signals);
+  g_test_add_func ("/gdbus/proxy", test_proxy);
   return g_test_run();
 }
