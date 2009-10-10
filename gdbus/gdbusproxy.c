@@ -1212,13 +1212,22 @@ g_dbus_proxy_invoke_method_sync_valist (GDBusProxy          *proxy,
     }
 
   /* append args to message */
-  dbus_message_iter_init_append (message, &iter);
-  if (_gdbus_signature_vararg_foreach (in_signature,
-                                       first_in_arg_type,
-                                       va_args,
-                                       append_values_cb,
-                                       &iter))
-    goto out;
+  if (strlen (in_signature) == 0)
+    {
+      g_assert (first_in_arg_type == G_TYPE_INVALID);
+    }
+  else
+    {
+      dbus_message_iter_init_append (message, &iter);
+      if (_gdbus_signature_vararg_foreach (in_signature,
+                                           first_in_arg_type,
+                                           va_args,
+                                           append_values_cb,
+                                           &iter))
+        goto out;
+
+      g_assert (va_arg (va_args, GType) == G_TYPE_INVALID);
+    }
 
   reply = g_dbus_connection_send_dbus_1_message_with_reply_sync (proxy->priv->connection,
                                                                  message,
@@ -1240,8 +1249,6 @@ g_dbus_proxy_invoke_method_sync_valist (GDBusProxy          *proxy,
       dbus_error_free (&dbus_error);
       goto out;
     }
-
-  g_assert (va_arg (va_args, GType) == G_TYPE_INVALID);
 
   first_out_arg_type = va_arg (va_args, GType);
   if (strlen (out_signature) == 0)
