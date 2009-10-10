@@ -64,8 +64,6 @@ struct _GDBusConnectionPrivate
   /* unfortunately there is no dbus_connection_get_exit_on_disconnect() so we need to track this ourselves */
   gboolean exit_on_disconnect;
 
-  guint global_pending_call_id;
-
   /* Maps used for signal subscription */
   GHashTable *map_rule_to_signal_data;
   GHashTable *map_id_to_signal_data;
@@ -360,8 +358,6 @@ static void
 g_dbus_connection_init (GDBusConnection *connection)
 {
   connection->priv = G_TYPE_INSTANCE_GET_PRIVATE (connection, G_TYPE_DBUS_CONNECTION, GDBusConnectionPrivate);
-
-  connection->priv->global_pending_call_id = 1;
 
   connection->priv->map_rule_to_signal_data = g_hash_table_new (g_str_hash,
                                                                 g_str_equal);
@@ -1102,11 +1098,9 @@ send_dbus_1_message_with_reply_cb (DBusPendingCall *pending_call,
   GCancellable *cancellable;
   gulong cancellable_handler_id;
   DBusMessage *reply;
-  guint pending_call_id;
 
   G_LOCK (connection_lock);
   cancellable_handler_id = GPOINTER_TO_UINT (g_object_get_data (G_OBJECT (simple), "cancellable-handler-id"));
-  pending_call_id = GPOINTER_TO_UINT (g_object_get_data (G_OBJECT (simple), "pending-id"));
   connection = G_DBUS_CONNECTION (g_async_result_get_source_object (G_ASYNC_RESULT (simple)));
   G_UNLOCK (connection_lock);
 
