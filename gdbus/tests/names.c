@@ -24,254 +24,12 @@
 #include <unistd.h>
 
 #include "tests.h"
+#define G_DBUS_I_UNDERSTAND_THAT_ABI_AND_API_IS_UNSTABLE
+#include <gdbus/gdbus-lowlevel.h>
+
 
 /* all tests rely on a shared mainloop */
 static GMainLoop *loop = NULL;
-
-/* ---------------------------------------------------------------------------------------------------- */
-/* Test that GBusNameOwner works correctly */
-/* ---------------------------------------------------------------------------------------------------- */
-
-static void
-test_bus_name_owner (void)
-{
-  GBusNameOwner *o;
-  GBusNameOwner *o2;
-  GDBusConnection *pc;
-
-  /**
-   *  Try to own a name when there is no bus.
-   *
-   *  The owner should not be initialized until we figure out there is no bus to connect to.
-   */
-  o = g_bus_name_owner_new (G_BUS_TYPE_SESSION,
-                            "org.gtk.GDBus.Name1",
-                            G_BUS_NAME_OWNER_FLAGS_NONE);
-  g_assert (!g_bus_name_owner_get_is_initialized (o));
-  g_assert (!g_bus_name_owner_get_owns_name (o));
-  _g_assert_property_notify (o, "is-initialized");
-  g_assert ( g_bus_name_owner_get_is_initialized (o));
-  g_assert (!g_bus_name_owner_get_owns_name (o));
-  g_object_unref (o);
-
-  /**
-   *  Try to own a name if we do have a bus instance.
-   *
-   *  The owner should not be initialized until we managed to acquire the name.
-   */
-  session_bus_up ();
-  o = g_bus_name_owner_new (G_BUS_TYPE_SESSION,
-                            "org.gtk.GDBus.Name1",
-                            G_BUS_NAME_OWNER_FLAGS_NONE);
-  g_assert (!g_bus_name_owner_get_is_initialized (o));
-  g_assert (!g_bus_name_owner_get_owns_name (o));
-  _g_assert_property_notify (o, "is-initialized");
-  g_assert ( g_bus_name_owner_get_is_initialized (o));
-  g_assert ( g_bus_name_owner_get_owns_name (o));
-  g_dbus_connection_set_exit_on_close (g_bus_name_owner_get_connection (o), FALSE);
-
-  /**
-   * try to own the same name again... this should not fail, we should get the same object
-   * because of singleton handling..
-   */
-  o2 = g_bus_name_owner_new (G_BUS_TYPE_SESSION,
-                             "org.gtk.GDBus.Name1",
-                             G_BUS_NAME_OWNER_FLAGS_NONE);
-  g_assert (o == o2);
-  g_object_unref (o2);
-
-  /**
-   * Now bring the bus down and check that we lose the name.
-   */
-  session_bus_down ();
-  _g_assert_signal_received (o, "name-lost");
-  g_assert (!g_bus_name_owner_get_owns_name (o));
-
-
-  /**
-   * Bring the bus back up and check that we own the name - this checks that GBusNameOwner
-   * tries to reaquire the name on reconnects.
-   */
-  session_bus_up ();
-  _g_assert_signal_received (o, "name-acquired");
-  g_assert (g_bus_name_owner_get_owns_name (o));
-
-  /**
-   * Create a private connection and use that to acquire the name.
-   *
-   * This should fail because o already owns the name and
-   * %G_BUS_NAME_OWNER_FLAGS_ALLOW_REPLACEMENT was not specified.
-   */
-  pc = g_dbus_connection_bus_get_private (G_BUS_TYPE_SESSION);
-  g_assert (pc != g_bus_name_owner_get_connection (o));
-  g_dbus_connection_set_exit_on_close (pc, FALSE);
-  _g_assert_signal_received (pc, "opened");
-  o2 = g_bus_name_owner_new_for_connection (pc,
-                                            "org.gtk.GDBus.Name1",
-                                            G_BUS_NAME_OWNER_FLAGS_ALLOW_REPLACEMENT);
-  g_assert (!g_bus_name_owner_get_is_initialized (o2));
-  g_assert (!g_bus_name_owner_get_owns_name (o2));
-  _g_assert_property_notify (o2, "is-initialized");
-  g_assert ( g_bus_name_owner_get_is_initialized (o2));
-  g_assert (!g_bus_name_owner_get_owns_name (o2));
-
-  /**
-   * Now make o stop owning the name. This should result in o2 acquiring the name.
-   */
-  g_object_unref (o);
-  _g_assert_signal_received (o2, "name-acquired");
-  g_assert ( g_bus_name_owner_get_owns_name (o2));
-
-  /**
-   * Now try to acquire the name from a non-private connection without
-   * specifying %G_BUS_NAME_OWNER_FLAGS_REPLACE.
-   *
-   * This should fail because o2 already owns the name and we didn't
-   * want to replace it.
-   */
-  o = g_bus_name_owner_new (G_BUS_TYPE_SESSION,
-                            "org.gtk.GDBus.Name1",
-                            G_BUS_NAME_OWNER_FLAGS_NONE);
-  g_assert (!g_bus_name_owner_get_is_initialized (o));
-  g_assert (!g_bus_name_owner_get_owns_name (o));
-  _g_assert_property_notify (o, "is-initialized");
-  g_assert ( g_bus_name_owner_get_is_initialized (o));
-  g_assert (!g_bus_name_owner_get_owns_name (o));
-  g_object_unref (o);
-
-  /**
-   * Now try with specifying %G_BUS_NAME_OWNER_FLAGS_REPLACE.
-   *
-   * This will make o2 lose the name since we specified replacement
-   * and o2 allows replacement.
-   */
-  o = g_bus_name_owner_new (G_BUS_TYPE_SESSION,
-                            "org.gtk.GDBus.Name1",
-                            G_BUS_NAME_OWNER_FLAGS_REPLACE);
-  g_assert (!g_bus_name_owner_get_is_initialized (o));
-  g_assert (!g_bus_name_owner_get_owns_name (o));
-  _g_assert_property_notify (o, "is-initialized");
-  g_assert ( g_bus_name_owner_get_is_initialized (o));
-  g_assert ( g_bus_name_owner_get_owns_name (o));
-  /* unfortunately it varies whether o2 gets NameLost before o gets NameAcquired... */
-  if (g_bus_name_owner_get_owns_name (o2))
-    _g_assert_signal_received (o2, "name-lost");
-  g_assert (!g_bus_name_owner_get_owns_name (o2));
-
-  /**
-   * Now, give up the name again.. o2 should get it back.
-   */
-  g_object_unref (o);
-  _g_assert_signal_received (o2, "name-acquired");
-  g_assert ( g_bus_name_owner_get_owns_name (o2));
-
-  /* Clean up */
-  g_object_unref (o2);
-  g_object_unref (pc);
-  session_bus_down ();
-}
-
-/* ---------------------------------------------------------------------------------------------------- */
-/* Test that GBusNameWatcher works correctly */
-/* ---------------------------------------------------------------------------------------------------- */
-
-static void
-test_bus_name_watcher (void)
-{
-  GBusNameWatcher *w;
-  GBusNameOwner *o;
-
-  /**
-   *  Try to watch a name when there is no bus.
-   *
-   *  The watcher should not be initialized until we figure out there is no bus to connect to.
-   */
-  w = g_bus_name_watcher_new (G_BUS_TYPE_SESSION,
-                              "org.gtk.GDBus.Name1");
-  g_assert (!g_bus_name_watcher_get_is_initialized (w));
-  g_assert (g_bus_name_watcher_get_name_owner (w) == NULL);
-  _g_assert_property_notify (w, "is-initialized");
-  g_assert ( g_bus_name_watcher_get_is_initialized (w));
-  g_assert (g_bus_name_watcher_get_name_owner (w) == NULL);
-  g_object_unref (w);
-
-  /**
-   *  Try to watch a name if we do have a bus instance.
-   *
-   *  The watcher should not be initialized until connected.
-   */
-  session_bus_up ();
-  w = g_bus_name_watcher_new (G_BUS_TYPE_SESSION,
-                              "org.gtk.GDBus.Name1");
-  g_assert (!g_bus_name_watcher_get_is_initialized (w));
-  g_assert (g_bus_name_watcher_get_name_owner (w) == NULL);
-  _g_assert_property_notify (w, "is-initialized");
-  g_assert ( g_bus_name_watcher_get_is_initialized (w));
-  g_assert (g_bus_name_watcher_get_name_owner (w) == NULL);
-  g_assert (g_dbus_connection_get_is_open (g_bus_name_watcher_get_connection (w)));
-  g_object_unref (w);
-
-  /**
-   * Now own a name and then create a new watcher.
-   */
-  /* own the name */
-  o = g_bus_name_owner_new (G_BUS_TYPE_SESSION,
-                            "org.gtk.GDBus.Name1",
-                            G_BUS_NAME_OWNER_FLAGS_NONE);
-  g_assert (!g_bus_name_owner_get_is_initialized (o));
-  g_assert (!g_bus_name_owner_get_owns_name (o));
-  _g_assert_property_notify (o, "is-initialized");
-  g_assert ( g_bus_name_owner_get_is_initialized (o));
-  g_assert ( g_bus_name_owner_get_owns_name (o));
-  g_dbus_connection_set_exit_on_close (g_bus_name_owner_get_connection (o), FALSE);
-  /* create watcher */
-  w = g_bus_name_watcher_new (G_BUS_TYPE_SESSION,
-                              "org.gtk.GDBus.Name1");
-  g_assert (!g_bus_name_watcher_get_is_initialized (w));
-  g_assert (g_bus_name_watcher_get_name_owner (w) == NULL);
-  _g_assert_property_notify (w, "is-initialized");
-  g_assert ( g_bus_name_watcher_get_is_initialized (w));
-  g_assert (g_bus_name_watcher_get_name_owner (w) != NULL);
-  g_object_unref (w);
-  g_object_unref (o);
-
-  /**
-   * Now create the watcher and then own the name.
-   *
-   * The watcher should emit #GBusNameWatcher::name-appeared.
-   */
-  /* create watcher */
-  w = g_bus_name_watcher_new (G_BUS_TYPE_SESSION,
-                              "org.gtk.GDBus.Name1");
-  g_assert (!g_bus_name_watcher_get_is_initialized (w));
-  g_assert (g_bus_name_watcher_get_name_owner (w) == NULL);
-  _g_assert_property_notify (w, "is-initialized");
-  g_assert ( g_bus_name_watcher_get_is_initialized (w));
-  g_assert (g_bus_name_watcher_get_name_owner (w) == NULL);
-  /* own the name */
-  o = g_bus_name_owner_new (G_BUS_TYPE_SESSION,
-                            "org.gtk.GDBus.Name1",
-                            G_BUS_NAME_OWNER_FLAGS_NONE);
-  g_dbus_connection_set_exit_on_close (g_bus_name_owner_get_connection (o), FALSE);
-  g_assert (!g_bus_name_owner_get_is_initialized (o));
-  g_assert (!g_bus_name_owner_get_owns_name (o));
-  /* wait until watcher has noticed */
-  _g_assert_signal_received (w, "name-appeared");
-  g_assert (g_bus_name_watcher_get_name_owner (w) != NULL);
-
-  /**
-   * Now destroy the owner.
-   *
-   * The watcher should emit #GBusNameWatcher::name-vanished.
-   */
-  g_object_unref (o);
-  _g_assert_signal_received (w, "name-vanished");
-  g_assert (g_bus_name_watcher_get_name_owner (w) == NULL);
-
-  /* cleanup */
-  g_object_unref (w);
-  session_bus_down ();
-}
 
 /* ---------------------------------------------------------------------------------------------------- */
 /* Test that g_bus_own_name() works correctly */
@@ -279,6 +37,7 @@ test_bus_name_watcher (void)
 
 typedef struct
 {
+  gboolean expect_null_connection;
   guint num_acquired;
   guint num_lost;
 } OwnNameData;
@@ -289,7 +48,7 @@ name_acquired_handler (GDBusConnection *connection,
                        gpointer         user_data)
 {
   OwnNameData *data = user_data;
-  g_dbus_connection_set_exit_on_close (connection, FALSE);
+  g_dbus_connection_set_exit_on_disconnect (connection, FALSE);
   data->num_acquired += 1;
   g_main_loop_quit (loop);
 }
@@ -300,7 +59,15 @@ name_lost_handler (GDBusConnection *connection,
                    gpointer         user_data)
 {
   OwnNameData *data = user_data;
-  g_dbus_connection_set_exit_on_close (connection, FALSE);
+  if (data->expect_null_connection)
+    {
+      g_assert (connection == NULL);
+    }
+  else
+    {
+      g_assert (connection != NULL);
+      g_dbus_connection_set_exit_on_disconnect (connection, FALSE);
+    }
   data->num_lost += 1;
   g_main_loop_quit (loop);
 }
@@ -309,7 +76,20 @@ static void
 test_bus_own_name (void)
 {
   guint id;
+  guint id2;
   OwnNameData data;
+  OwnNameData data2;
+  const gchar *name;
+  GDBusConnection *c;
+  DBusMessage *m;
+  DBusMessage *r;
+  DBusError dbus_error;
+  GError *error;
+  dbus_bool_t name_has_owner_reply;
+  GDBusConnection *c2;
+
+  error = NULL;
+  name = "org.gtk.GDBus.Name1";
 
   /**
    * First check that name_lost_handler() is invoked if there is no bus.
@@ -318,8 +98,9 @@ test_bus_own_name (void)
    */
   data.num_acquired = 0;
   data.num_lost = 0;
+  data.expect_null_connection = TRUE;
   id = g_bus_own_name (G_BUS_TYPE_SESSION,
-                       "org.gtk.GDBus.Name1",
+                       name,
                        G_BUS_NAME_OWNER_FLAGS_NONE,
                        name_acquired_handler,
                        name_lost_handler,
@@ -339,8 +120,9 @@ test_bus_own_name (void)
   session_bus_up ();
   data.num_acquired = 0;
   data.num_lost = 0;
+  data.expect_null_connection = FALSE;
   id = g_bus_own_name (G_BUS_TYPE_SESSION,
-                       "org.gtk.GDBus.Name1",
+                       name,
                        G_BUS_NAME_OWNER_FLAGS_NONE,
                        name_acquired_handler,
                        name_lost_handler,
@@ -350,6 +132,36 @@ test_bus_own_name (void)
   g_main_loop_run (loop);
   g_assert_cmpint (data.num_acquired, ==, 1);
   g_assert_cmpint (data.num_lost,     ==, 0);
+
+  /**
+   * Check that the name was actually acquired.
+   */
+  c = g_dbus_connection_bus_get_sync (G_BUS_TYPE_SESSION, NULL, NULL);
+  g_assert (c != NULL);
+  g_assert (!g_dbus_connection_get_is_disconnected (c));
+  m = dbus_message_new_method_call (DBUS_SERVICE_DBUS,
+                                    DBUS_PATH_DBUS,
+                                    DBUS_INTERFACE_DBUS,
+                                    "NameHasOwner");
+  dbus_message_append_args (m,
+                            DBUS_TYPE_STRING, &name,
+                            DBUS_TYPE_INVALID);
+  r = g_dbus_connection_send_dbus_1_message_with_reply_sync (c,
+                                                             m,
+                                                             -1,
+                                                             NULL,
+                                                             &error);
+  g_assert_no_error (error);
+  g_assert (r != NULL);
+  dbus_error_init (&dbus_error);
+  dbus_message_get_args (r,
+                         &dbus_error,
+                         DBUS_TYPE_BOOLEAN, &name_has_owner_reply,
+                         DBUS_TYPE_INVALID);
+  g_assert (!dbus_error_is_set (&dbus_error));
+  g_assert (name_has_owner_reply);
+  dbus_message_unref (m);
+  dbus_message_unref (r);
 
   /**
    * Stop owning the name - this should trigger name_lost_handler() because of this
@@ -361,19 +173,46 @@ test_bus_own_name (void)
    *
    * in g_bus_unown_name().
    */
+  data.expect_null_connection = FALSE;
   g_bus_unown_name (id);
   g_assert_cmpint (data.num_acquired, ==, 1);
   g_assert_cmpint (data.num_lost,     ==, 1);
 
   /**
-   * Own the name again. Then nuke the bus and bring it back up, checking
-   * that the name_lost_handler() and name_acquired() handlers are invoked
-   * as appropriate.
+   * Check that the name was actually relased.
+   */
+  m = dbus_message_new_method_call (DBUS_SERVICE_DBUS,
+                                    DBUS_PATH_DBUS,
+                                    DBUS_INTERFACE_DBUS,
+                                    "NameHasOwner");
+  dbus_message_append_args (m,
+                            DBUS_TYPE_STRING, &name,
+                            DBUS_TYPE_INVALID);
+  r = g_dbus_connection_send_dbus_1_message_with_reply_sync (c,
+                                                             m,
+                                                             -1,
+                                                             NULL,
+                                                             &error);
+  g_assert_no_error (error);
+  g_assert (r != NULL);
+  dbus_error_init (&dbus_error);
+  dbus_message_get_args (r,
+                         &dbus_error,
+                         DBUS_TYPE_BOOLEAN, &name_has_owner_reply,
+                         DBUS_TYPE_INVALID);
+  g_assert (!dbus_error_is_set (&dbus_error));
+  g_assert (!name_has_owner_reply);
+  dbus_message_unref (m);
+  dbus_message_unref (r);
+
+  /**
+   * Own the name again.
    */
   data.num_acquired = 0;
   data.num_lost = 0;
+  data.expect_null_connection = FALSE;
   id = g_bus_own_name (G_BUS_TYPE_SESSION,
-                       "org.gtk.GDBus.Name1",
+                       name,
                        G_BUS_NAME_OWNER_FLAGS_NONE,
                        name_acquired_handler,
                        name_lost_handler,
@@ -383,26 +222,162 @@ test_bus_own_name (void)
   g_main_loop_run (loop);
   g_assert_cmpint (data.num_acquired, ==, 1);
   g_assert_cmpint (data.num_lost,     ==, 0);
-  /* nuke the bus */
-  session_bus_down ();
+
+  /**
+   * Try owning the name with another object on the same connection  - this should
+   * fail because we already own the name.
+   */
+  data2.num_acquired = 0;
+  data2.num_lost = 0;
+  data2.expect_null_connection = FALSE;
+  id2 = g_bus_own_name (G_BUS_TYPE_SESSION,
+                        name,
+                        G_BUS_NAME_OWNER_FLAGS_NONE,
+                        name_acquired_handler,
+                        name_lost_handler,
+                        &data2);
+  g_assert_cmpint (data2.num_acquired, ==, 0);
+  g_assert_cmpint (data2.num_lost,     ==, 0);
+  g_main_loop_run (loop);
+  g_assert_cmpint (data2.num_acquired, ==, 0);
+  g_assert_cmpint (data2.num_lost,     ==, 1);
+  g_bus_unown_name (id2);
+  g_assert_cmpint (data2.num_acquired, ==, 0);
+  g_assert_cmpint (data2.num_lost,     ==, 1);
+
+  /**
+   * Create a secondary (e.g. private) connection and try owning the name on that
+   * connection. This should fail both with and without _REPLACE because we
+   * didn't specify ALLOW_REPLACEMENT.
+   */
+  c2 = g_dbus_connection_bus_get_private_sync (G_BUS_TYPE_SESSION, NULL, NULL);
+  g_assert (c2 != NULL);
+  g_assert (!g_dbus_connection_get_is_disconnected (c2));
+  /* first without _REPLACE */
+  data2.num_acquired = 0;
+  data2.num_lost = 0;
+  data2.expect_null_connection = FALSE;
+  id2 = g_bus_own_name_on_connection (c2,
+                                      name,
+                                      G_BUS_NAME_OWNER_FLAGS_NONE,
+                                      name_acquired_handler,
+                                      name_lost_handler,
+                                      &data2);
+  g_assert_cmpint (data2.num_acquired, ==, 0);
+  g_assert_cmpint (data2.num_lost,     ==, 0);
+  g_main_loop_run (loop);
+  g_assert_cmpint (data2.num_acquired, ==, 0);
+  g_assert_cmpint (data2.num_lost,     ==, 1);
+  g_bus_unown_name (id2);
+  g_assert_cmpint (data2.num_acquired, ==, 0);
+  g_assert_cmpint (data2.num_lost,     ==, 1);
+  /* then with _REPLACE */
+  data2.num_acquired = 0;
+  data2.num_lost = 0;
+  data2.expect_null_connection = FALSE;
+  id2 = g_bus_own_name_on_connection (c2,
+                                      name,
+                                      G_BUS_NAME_OWNER_FLAGS_REPLACE,
+                                      name_acquired_handler,
+                                      name_lost_handler,
+                                      &data2);
+  g_assert_cmpint (data2.num_acquired, ==, 0);
+  g_assert_cmpint (data2.num_lost,     ==, 0);
+  g_main_loop_run (loop);
+  g_assert_cmpint (data2.num_acquired, ==, 0);
+  g_assert_cmpint (data2.num_lost,     ==, 1);
+  g_bus_unown_name (id2);
+  g_assert_cmpint (data2.num_acquired, ==, 0);
+  g_assert_cmpint (data2.num_lost,     ==, 1);
+
+  /**
+   * Stop owning the name and grab it again with _ALLOW_REPLACEMENT.
+   */
+  data.expect_null_connection = FALSE;
+  g_bus_unown_name (id);
+  g_assert_cmpint (data.num_acquired, ==, 1);
+  g_assert_cmpint (data.num_lost,     ==, 1);
+  /* grab it again */
+  data.num_acquired = 0;
+  data.num_lost = 0;
+  data.expect_null_connection = FALSE;
+  id = g_bus_own_name (G_BUS_TYPE_SESSION,
+                       name,
+                       G_BUS_NAME_OWNER_FLAGS_ALLOW_REPLACEMENT,
+                       name_acquired_handler,
+                       name_lost_handler,
+                       &data);
+  g_assert_cmpint (data.num_acquired, ==, 0);
+  g_assert_cmpint (data.num_lost,     ==, 0);
+  g_main_loop_run (loop);
+  g_assert_cmpint (data.num_acquired, ==, 1);
+  g_assert_cmpint (data.num_lost,     ==, 0);
+
+  /**
+   * Now try to grab the name from the secondary connection.
+   *
+   */
+  /* first without _REPLACE - this won't make us acquire the name */
+  data2.num_acquired = 0;
+  data2.num_lost = 0;
+  data2.expect_null_connection = FALSE;
+  id2 = g_bus_own_name_on_connection (c2,
+                                      name,
+                                      G_BUS_NAME_OWNER_FLAGS_NONE,
+                                      name_acquired_handler,
+                                      name_lost_handler,
+                                      &data2);
+  g_assert_cmpint (data2.num_acquired, ==, 0);
+  g_assert_cmpint (data2.num_lost,     ==, 0);
+  g_main_loop_run (loop);
+  g_assert_cmpint (data2.num_acquired, ==, 0);
+  g_assert_cmpint (data2.num_lost,     ==, 1);
+  g_bus_unown_name (id2);
+  g_assert_cmpint (data2.num_acquired, ==, 0);
+  g_assert_cmpint (data2.num_lost,     ==, 1);
+  /* then with _REPLACE - here we should acquire the name - e.g. owner should lose it
+   * and owner2 should acquire it  */
+  data2.num_acquired = 0;
+  data2.num_lost = 0;
+  data2.expect_null_connection = FALSE;
+  id2 = g_bus_own_name_on_connection (c2,
+                                      name,
+                                      G_BUS_NAME_OWNER_FLAGS_REPLACE,
+                                      name_acquired_handler,
+                                      name_lost_handler,
+                                      &data2);
+  g_assert_cmpint (data.num_acquired, ==, 1);
+  g_assert_cmpint (data.num_lost,     ==, 0);
+  g_assert_cmpint (data2.num_acquired, ==, 0);
+  g_assert_cmpint (data2.num_lost,     ==, 0);
+  /* wait for handlers for both owner and owner2 to fire */
+  g_main_loop_run (loop);
   g_main_loop_run (loop);
   g_assert_cmpint (data.num_acquired, ==, 1);
   g_assert_cmpint (data.num_lost,     ==, 1);
-  /* bring the bus back up */
-  session_bus_up ();
+  g_assert_cmpint (data2.num_acquired, ==, 1);
+  g_assert_cmpint (data2.num_lost,     ==, 0);
+  /* ok, make owner2 release the name - then wait for owner to automagically reacquire it */
+  g_bus_unown_name (id2);
+  g_assert_cmpint (data2.num_acquired, ==, 1);
+  g_assert_cmpint (data2.num_lost,     ==, 1);
   g_main_loop_run (loop);
   g_assert_cmpint (data.num_acquired, ==, 2);
   g_assert_cmpint (data.num_lost,     ==, 1);
-  /* nuke the bus */
+
+  /**
+   * Finally, nuke the bus and check name_lost_handler() is invoked.
+   *
+   */
+  data.expect_null_connection = TRUE;
   session_bus_down ();
   g_main_loop_run (loop);
   g_assert_cmpint (data.num_acquired, ==, 2);
   g_assert_cmpint (data.num_lost,     ==, 2);
-
-  /* cleanup */
   g_bus_unown_name (id);
-  g_assert_cmpint (data.num_acquired, ==, 2);
-  g_assert_cmpint (data.num_lost,     ==, 2);
+
+  g_object_unref (c);
+  g_object_unref (c2);
 }
 
 /* ---------------------------------------------------------------------------------------------------- */
@@ -411,9 +386,32 @@ test_bus_own_name (void)
 
 typedef struct
 {
+  gboolean expect_null_connection;
+  guint num_acquired;
+  guint num_lost;
   guint num_appeared;
   guint num_vanished;
 } WatchNameData;
+
+static void
+w_name_acquired_handler (GDBusConnection *connection,
+                         const gchar     *name,
+                         gpointer         user_data)
+{
+  WatchNameData *data = user_data;
+  data->num_acquired += 1;
+  g_main_loop_quit (loop);
+}
+
+static void
+w_name_lost_handler (GDBusConnection *connection,
+                     const gchar     *name,
+                     gpointer         user_data)
+{
+  WatchNameData *data = user_data;
+  data->num_lost += 1;
+  g_main_loop_quit (loop);
+}
 
 static void
 name_appeared_handler (GDBusConnection *connection,
@@ -422,7 +420,15 @@ name_appeared_handler (GDBusConnection *connection,
                        gpointer         user_data)
 {
   WatchNameData *data = user_data;
-  g_dbus_connection_set_exit_on_close (connection, FALSE);
+  if (data->expect_null_connection)
+    {
+      g_assert (connection == NULL);
+    }
+  else
+    {
+      g_assert (connection != NULL);
+      g_dbus_connection_set_exit_on_disconnect (connection, FALSE);
+    }
   data->num_appeared += 1;
   g_main_loop_quit (loop);
 }
@@ -433,7 +439,15 @@ name_vanished_handler (GDBusConnection *connection,
                        gpointer         user_data)
 {
   WatchNameData *data = user_data;
-  g_dbus_connection_set_exit_on_close (connection, FALSE);
+  if (data->expect_null_connection)
+    {
+      g_assert (connection == NULL);
+    }
+  else
+    {
+      g_assert (connection != NULL);
+      g_dbus_connection_set_exit_on_disconnect (connection, FALSE);
+    }
   data->num_vanished += 1;
   g_main_loop_quit (loop);
 }
@@ -442,8 +456,8 @@ static void
 test_bus_watch_name (void)
 {
   WatchNameData data;
-  GBusNameOwner *o;
   guint id;
+  guint owner_id;
 
   /**
    * First check that name_vanished_handler() is invoked if there is no bus.
@@ -452,6 +466,7 @@ test_bus_watch_name (void)
    */
   data.num_appeared = 0;
   data.num_vanished = 0;
+  data.expect_null_connection = TRUE;
   id = g_bus_watch_name (G_BUS_TYPE_SESSION,
                          "org.gtk.GDBus.Name1",
                          name_appeared_handler,
@@ -471,14 +486,19 @@ test_bus_watch_name (void)
    */
   session_bus_up ();
   /* own the name */
-  o = g_bus_name_owner_new (G_BUS_TYPE_SESSION,
-                            "org.gtk.GDBus.Name1",
-                            G_BUS_NAME_OWNER_FLAGS_NONE);
-  g_dbus_connection_set_exit_on_close (g_bus_name_owner_get_connection (o), FALSE);
-  g_assert (!g_bus_name_owner_get_owns_name (o));
-  _g_assert_signal_received (o, "name-acquired");
-  g_assert ( g_bus_name_owner_get_owns_name (o));
-  /* watch the name */
+  data.num_acquired = 0;
+  data.num_lost = 0;
+  data.expect_null_connection = FALSE;
+  owner_id = g_bus_own_name (G_BUS_TYPE_SESSION,
+                             "org.gtk.GDBus.Name1",
+                             G_BUS_NAME_OWNER_FLAGS_NONE,
+                             w_name_acquired_handler,
+                             w_name_lost_handler,
+                             &data);
+  g_main_loop_run (loop);
+  g_assert_cmpint (data.num_acquired, ==, 1);
+  g_assert_cmpint (data.num_lost,     ==, 0);
+  /* now watch the name */
   data.num_appeared = 0;
   data.num_vanished = 0;
   id = g_bus_watch_name (G_BUS_TYPE_SESSION,
@@ -505,7 +525,11 @@ test_bus_watch_name (void)
   g_bus_unwatch_name (id);
   g_assert_cmpint (data.num_appeared, ==, 1);
   g_assert_cmpint (data.num_vanished, ==, 1);
-  g_object_unref (o);
+
+  /* unown the name */
+  g_bus_unown_name (owner_id);
+  g_assert_cmpint (data.num_acquired, ==, 1);
+  g_assert_cmpint (data.num_lost,     ==, 1);
 
   /**
    * Create a watcher and then make a name be owned.
@@ -525,46 +549,35 @@ test_bus_watch_name (void)
   g_main_loop_run (loop);
   g_assert_cmpint (data.num_appeared, ==, 0);
   g_assert_cmpint (data.num_vanished, ==, 1);
+
   /* own the name */
-  o = g_bus_name_owner_new (G_BUS_TYPE_SESSION,
-                            "org.gtk.GDBus.Name1",
-                            G_BUS_NAME_OWNER_FLAGS_NONE);
-  g_dbus_connection_set_exit_on_close (g_bus_name_owner_get_connection (o), FALSE);
-  g_assert (!g_bus_name_owner_get_owns_name (o));
+  data.num_acquired = 0;
+  data.num_lost = 0;
+  data.expect_null_connection = FALSE;
+  owner_id = g_bus_own_name (G_BUS_TYPE_SESSION,
+                             "org.gtk.GDBus.Name1",
+                             G_BUS_NAME_OWNER_FLAGS_NONE,
+                             w_name_acquired_handler,
+                             w_name_lost_handler,
+                             &data);
   g_main_loop_run (loop);
+  g_main_loop_run (loop);
+  g_assert_cmpint (data.num_acquired, ==, 1);
+  g_assert_cmpint (data.num_lost,     ==, 0);
   g_assert_cmpint (data.num_appeared, ==, 1);
   g_assert_cmpint (data.num_vanished, ==, 1);
-  /* there's a race here, owner might not know that it has owned the name yet.. so.. */
-  if (!g_bus_name_owner_get_owns_name (o))
-    _g_assert_signal_received (o, "name-acquired");
-  g_assert ( g_bus_name_owner_get_owns_name (o));
 
   /**
-   * Nuke the bus and check that the name vanishes. Then bring the bus back up
-   * and check that the name appears.
+   * Nuke the bus and check that the name vanishes and is lost.
    */
+  data.expect_null_connection = TRUE;
   session_bus_down ();
   g_main_loop_run (loop);
-  g_assert_cmpint (data.num_appeared, ==, 1);
+  g_assert_cmpint (data.num_lost,     ==, 1);
   g_assert_cmpint (data.num_vanished, ==, 2);
-  /* again, work around possible races */
-  if (g_bus_name_owner_get_owns_name (o))
-    _g_assert_signal_received (o, "name-lost");
-  g_assert (!g_bus_name_owner_get_owns_name (o));
-  session_bus_up ();
-  g_main_loop_run (loop);
-  g_assert_cmpint (data.num_appeared, ==, 2);
-  g_assert_cmpint (data.num_vanished, ==, 2);
-  /* again, work around possible races */
-  if (!g_bus_name_owner_get_owns_name (o))
-    _g_assert_signal_received (o, "name-acquired");
-  g_assert ( g_bus_name_owner_get_owns_name (o));
-  g_bus_unwatch_name (id);
-  g_assert_cmpint (data.num_appeared, ==, 2);
-  g_assert_cmpint (data.num_vanished, ==, 3);
-  g_object_unref (o);
 
-  session_bus_down ();
+  g_bus_unwatch_name (id);
+  g_bus_unown_name (owner_id);
 
 }
 
@@ -586,9 +599,8 @@ main (int   argc,
   g_unsetenv ("DISPLAY");
   g_setenv ("DBUS_SESSION_BUS_ADDRESS", session_bus_get_temporary_address (), TRUE);
 
-  g_test_add_func ("/gdbus/bus-name-owner", test_bus_name_owner);
-  g_test_add_func ("/gdbus/bus-name-watcher", test_bus_name_watcher);
   g_test_add_func ("/gdbus/bus-own-name", test_bus_own_name);
   g_test_add_func ("/gdbus/bus-watch-name", test_bus_watch_name);
+
   return g_test_run();
 }

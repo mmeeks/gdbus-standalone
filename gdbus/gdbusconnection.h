@@ -56,9 +56,7 @@ struct _GDBusConnection
 
 /**
  * GDBusConnectionClass:
- * @opened: Signal class handler for the #GDBusConnection::opened signal.
- * @closed: Signal class handler for the #GDBusConnection::closed signal.
- * @initialized: Signal class handler for the #GDBusConnection::initialized signal.
+ * @disconnected: Signal class handler for the #GDBusConnection::disconnected signal.
  *
  * Class structure for #GDBusConnection.
  */
@@ -70,9 +68,7 @@ struct _GDBusConnectionClass
   /*< public >*/
 
   /* Signals */
-  void (*opened)      (GDBusConnection *connection);
-  void (*closed)      (GDBusConnection *connection);
-  void (*initialized) (GDBusConnection *connection);
+  void (*disconnected) (GDBusConnection *connection);
 
   /*< private >*/
   /* Padding for future expansion */
@@ -87,16 +83,32 @@ struct _GDBusConnectionClass
 };
 
 GType            g_dbus_connection_get_type                   (void) G_GNUC_CONST;
-GDBusConnection *g_dbus_connection_bus_get                    (GBusType            bus_type);
-GDBusConnection *g_dbus_connection_bus_get_private            (GBusType            bus_type);
+
+void             g_dbus_connection_bus_get                    (GBusType             bus_type,
+                                                               GCancellable        *cancellable,
+                                                               GAsyncReadyCallback  callback,
+                                                               gpointer             user_data);
+GDBusConnection *g_dbus_connection_bus_get_finish             (GAsyncResult        *res,
+                                                               GError             **error);
+GDBusConnection *g_dbus_connection_bus_get_sync               (GBusType            bus_type,
+                                                               GCancellable       *cancellable,
+                                                               GError            **error);
+
+void             g_dbus_connection_bus_get_private            (GBusType             bus_type,
+                                                               GCancellable        *cancellable,
+                                                               GAsyncReadyCallback  callback,
+                                                               gpointer             user_data);
+GDBusConnection *g_dbus_connection_bus_get_private_finish     (GAsyncResult        *res,
+                                                               GError             **error);
+GDBusConnection *g_dbus_connection_bus_get_private_sync       (GBusType            bus_type,
+                                                               GCancellable       *cancellable,
+                                                               GError            **error);
 GBusType         g_dbus_connection_get_bus_type               (GDBusConnection    *connection);
-gboolean         g_dbus_connection_get_is_open                (GDBusConnection    *connection);
-gboolean         g_dbus_connection_get_is_initialized         (GDBusConnection    *connection);
-gboolean         g_dbus_connection_get_is_private             (GDBusConnection    *connection);
 const gchar     *g_dbus_connection_get_unique_name            (GDBusConnection    *connection);
-gboolean         g_dbus_connection_get_exit_on_close          (GDBusConnection    *connection);
-void             g_dbus_connection_set_exit_on_close          (GDBusConnection    *connection,
-                                                               gboolean            exit_on_close);
+gboolean         g_dbus_connection_get_is_private             (GDBusConnection    *connection);
+gboolean         g_dbus_connection_get_is_disconnected        (GDBusConnection    *connection);
+void             g_dbus_connection_set_exit_on_disconnect     (GDBusConnection    *connection,
+                                                               gboolean            exit_on_disconnect);
 
 /* The following is only for the C object mapping and should not be bound to other languages */
 

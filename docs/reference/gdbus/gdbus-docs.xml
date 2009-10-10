@@ -19,8 +19,6 @@
         <xi:include href="xml/gdbusmainloop.xml"/>
         <xi:include href="xml/gdbuserror.xml"/>
         <xi:include href="xml/gdbusconnection.xml"/>
-        <xi:include href="xml/gbusnameowner.xml"/>
-        <xi:include href="xml/gbusnamewatcher.xml"/>
     </chapter>
     <chapter id="convenience">
         <title>GDBus Convenience</title>

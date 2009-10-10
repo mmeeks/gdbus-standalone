@@ -29,8 +29,6 @@
 #include <gdbus/gdbusenumtypes.h>
 #include <gdbus/gdbusconnection.h>
 #include <gdbus/gdbuserror.h>
-#include <gdbus/gbusnameowner.h>
-#include <gdbus/gbusnamewatcher.h>
 #include <gdbus/gdbusnameowning.h>
 #include <gdbus/gdbusnamewatching.h>
 #include <gdbus/gdbusproxywatching.h>

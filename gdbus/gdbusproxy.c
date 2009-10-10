@@ -34,7 +34,6 @@
 #include "gdbuserror.h"
 #include "gdbusstructure.h"
 #include "gdbusvariant.h"
-#include "gbusnamewatcher.h"
 #include "gdbus-marshal.h"
 #include "gdbusprivate.h"
 

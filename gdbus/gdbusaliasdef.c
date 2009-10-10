@@ -20,29 +20,23 @@ extern __typeof (g_dbus_connection_get_type) g_dbus_connection_get_type __attrib
 #undef g_dbus_connection_bus_get 
 extern __typeof (g_dbus_connection_bus_get) g_dbus_connection_bus_get __attribute((alias("IA__g_dbus_connection_bus_get"), visibility("default")));
 
-#undef g_dbus_connection_bus_get_private 
-extern __typeof (g_dbus_connection_bus_get_private) g_dbus_connection_bus_get_private __attribute((alias("IA__g_dbus_connection_bus_get_private"), visibility("default")));
+#undef g_dbus_connection_bus_get_finish 
+extern __typeof (g_dbus_connection_bus_get_finish) g_dbus_connection_bus_get_finish __attribute((alias("IA__g_dbus_connection_bus_get_finish"), visibility("default")));
+
+#undef g_dbus_connection_bus_get_sync 
+extern __typeof (g_dbus_connection_bus_get_sync) g_dbus_connection_bus_get_sync __attribute((alias("IA__g_dbus_connection_bus_get_sync"), visibility("default")));
+
+#undef g_dbus_connection_bus_get_private_sync 
+extern __typeof (g_dbus_connection_bus_get_private_sync) g_dbus_connection_bus_get_private_sync __attribute((alias("IA__g_dbus_connection_bus_get_private_sync"), visibility("default")));
 
 #undef g_dbus_connection_get_unique_name 
 extern __typeof (g_dbus_connection_get_unique_name) g_dbus_connection_get_unique_name __attribute((alias("IA__g_dbus_connection_get_unique_name"), visibility("default")));
 
-#undef g_dbus_connection_get_is_open 
-extern __typeof (g_dbus_connection_get_is_open) g_dbus_connection_get_is_open __attribute((alias("IA__g_dbus_connection_get_is_open"), visibility("default")));
+#undef g_dbus_connection_get_is_disconnected 
+extern __typeof (g_dbus_connection_get_is_disconnected) g_dbus_connection_get_is_disconnected __attribute((alias("IA__g_dbus_connection_get_is_disconnected"), visibility("default")));
 
-#undef g_dbus_connection_get_is_private 
-extern __typeof (g_dbus_connection_get_is_private) g_dbus_connection_get_is_private __attribute((alias("IA__g_dbus_connection_get_is_private"), visibility("default")));
-
-#undef g_dbus_connection_get_bus_type 
-extern __typeof (g_dbus_connection_get_bus_type) g_dbus_connection_get_bus_type __attribute((alias("IA__g_dbus_connection_get_bus_type"), visibility("default")));
-
-#undef g_dbus_connection_get_exit_on_close 
-extern __typeof (g_dbus_connection_get_exit_on_close) g_dbus_connection_get_exit_on_close __attribute((alias("IA__g_dbus_connection_get_exit_on_close"), visibility("default")));
-
-#undef g_dbus_connection_set_exit_on_close 
-extern __typeof (g_dbus_connection_set_exit_on_close) g_dbus_connection_set_exit_on_close __attribute((alias("IA__g_dbus_connection_set_exit_on_close"), visibility("default")));
-
-#undef g_dbus_connection_get_is_initialized 
-extern __typeof (g_dbus_connection_get_is_initialized) g_dbus_connection_get_is_initialized __attribute((alias("IA__g_dbus_connection_get_is_initialized"), visibility("default")));
+#undef g_dbus_connection_set_exit_on_disconnect 
+extern __typeof (g_dbus_connection_set_exit_on_disconnect) g_dbus_connection_set_exit_on_disconnect __attribute((alias("IA__g_dbus_connection_set_exit_on_disconnect"), visibility("default")));
 
 #undef g_dbus_connection_signal_subscribe 
 extern __typeof (g_dbus_connection_signal_subscribe) g_dbus_connection_signal_subscribe __attribute((alias("IA__g_dbus_connection_signal_subscribe"), visibility("default")));
@@ -100,65 +94,6 @@ extern __typeof (g_dbus_integrate_dbus_1_server) g_dbus_integrate_dbus_1_server 
 
 #undef g_dbus_unintegrate_dbus_1_server 
 extern __typeof (g_dbus_unintegrate_dbus_1_server) g_dbus_unintegrate_dbus_1_server __attribute((alias("IA__g_dbus_unintegrate_dbus_1_server"), visibility("default")));
-
-#endif
-#endif
-#if IN_HEADER(__G_BUS_NAME_OWNER_H__)
-#if IN_FILE(__G_BUS_NAME_OWNER_C__)
-#undef g_bus_name_owner_get_type 
-extern __typeof (g_bus_name_owner_get_type) g_bus_name_owner_get_type __attribute((alias("IA__g_bus_name_owner_get_type"), visibility("default")));
-
-#undef g_bus_name_owner_new 
-extern __typeof (g_bus_name_owner_new) g_bus_name_owner_new __attribute((alias("IA__g_bus_name_owner_new"), visibility("default")));
-
-#undef g_bus_name_owner_new_for_connection 
-extern __typeof (g_bus_name_owner_new_for_connection) g_bus_name_owner_new_for_connection __attribute((alias("IA__g_bus_name_owner_new_for_connection"), visibility("default")));
-
-#undef g_bus_name_owner_get_owns_name 
-extern __typeof (g_bus_name_owner_get_owns_name) g_bus_name_owner_get_owns_name __attribute((alias("IA__g_bus_name_owner_get_owns_name"), visibility("default")));
-
-#undef g_bus_name_owner_get_name 
-extern __typeof (g_bus_name_owner_get_name) g_bus_name_owner_get_name __attribute((alias("IA__g_bus_name_owner_get_name"), visibility("default")));
-
-#undef g_bus_name_owner_get_bus_type 
-extern __typeof (g_bus_name_owner_get_bus_type) g_bus_name_owner_get_bus_type __attribute((alias("IA__g_bus_name_owner_get_bus_type"), visibility("default")));
-
-#undef g_bus_name_owner_get_flags 
-extern __typeof (g_bus_name_owner_get_flags) g_bus_name_owner_get_flags __attribute((alias("IA__g_bus_name_owner_get_flags"), visibility("default")));
-
-#undef g_bus_name_owner_get_is_initialized 
-extern __typeof (g_bus_name_owner_get_is_initialized) g_bus_name_owner_get_is_initialized __attribute((alias("IA__g_bus_name_owner_get_is_initialized"), visibility("default")));
-
-#undef g_bus_name_owner_get_connection 
-extern __typeof (g_bus_name_owner_get_connection) g_bus_name_owner_get_connection __attribute((alias("IA__g_bus_name_owner_get_connection"), visibility("default")));
-
-#endif
-#endif
-#if IN_HEADER(__G_BUS_NAME_WATCHER_H__)
-#if IN_FILE(__G_BUS_NAME_WATCHER_C__)
-#undef g_bus_name_watcher_get_type 
-extern __typeof (g_bus_name_watcher_get_type) g_bus_name_watcher_get_type __attribute((alias("IA__g_bus_name_watcher_get_type"), visibility("default")));
-
-#undef g_bus_name_watcher_new 
-extern __typeof (g_bus_name_watcher_new) g_bus_name_watcher_new __attribute((alias("IA__g_bus_name_watcher_new"), visibility("default")));
-
-#undef g_bus_name_watcher_new_for_connection 
-extern __typeof (g_bus_name_watcher_new_for_connection) g_bus_name_watcher_new_for_connection __attribute((alias("IA__g_bus_name_watcher_new_for_connection"), visibility("default")));
-
-#undef g_bus_name_watcher_get_name_owner 
-extern __typeof (g_bus_name_watcher_get_name_owner) g_bus_name_watcher_get_name_owner __attribute((alias("IA__g_bus_name_watcher_get_name_owner"), visibility("default")));
-
-#undef g_bus_name_watcher_get_name 
-extern __typeof (g_bus_name_watcher_get_name) g_bus_name_watcher_get_name __attribute((alias("IA__g_bus_name_watcher_get_name"), visibility("default")));
-
-#undef g_bus_name_watcher_get_bus_type 
-extern __typeof (g_bus_name_watcher_get_bus_type) g_bus_name_watcher_get_bus_type __attribute((alias("IA__g_bus_name_watcher_get_bus_type"), visibility("default")));
-
-#undef g_bus_name_watcher_get_is_initialized 
-extern __typeof (g_bus_name_watcher_get_is_initialized) g_bus_name_watcher_get_is_initialized __attribute((alias("IA__g_bus_name_watcher_get_is_initialized"), visibility("default")));
-
-#undef g_bus_name_watcher_get_connection 
-extern __typeof (g_bus_name_watcher_get_connection) g_bus_name_watcher_get_connection __attribute((alias("IA__g_bus_name_watcher_get_connection"), visibility("default")));
 
 #endif
 #endif
@@ -231,6 +166,9 @@ extern __typeof (g_bus_unwatch_proxy) g_bus_unwatch_proxy __attribute((alias("IA
 #if IN_FILE(__G_DBUS_NAME_OWNING_C__)
 #undef g_bus_own_name 
 extern __typeof (g_bus_own_name) g_bus_own_name __attribute((alias("IA__g_bus_own_name"), visibility("default")));
+
+#undef g_bus_own_name_on_connection 
+extern __typeof (g_bus_own_name_on_connection) g_bus_own_name_on_connection __attribute((alias("IA__g_bus_own_name_on_connection"), visibility("default")));
 
 #undef g_bus_unown_name 
 extern __typeof (g_bus_unown_name) g_bus_unown_name __attribute((alias("IA__g_bus_unown_name"), visibility("default")));

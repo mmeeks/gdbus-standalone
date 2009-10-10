@@ -17,14 +17,12 @@
 #if IN_FILE(__G_DBUS_CONNECTION_C__)
 g_dbus_connection_get_type G_GNUC_CONST
 g_dbus_connection_bus_get
-g_dbus_connection_bus_get_private
+g_dbus_connection_bus_get_finish
+g_dbus_connection_bus_get_sync
+g_dbus_connection_bus_get_private_sync
 g_dbus_connection_get_unique_name
-g_dbus_connection_get_is_open
-g_dbus_connection_get_is_private
-g_dbus_connection_get_bus_type
-g_dbus_connection_get_exit_on_close
-g_dbus_connection_set_exit_on_close
-g_dbus_connection_get_is_initialized
+g_dbus_connection_get_is_disconnected
+g_dbus_connection_set_exit_on_disconnect
 g_dbus_connection_signal_subscribe
 g_dbus_connection_signal_unsubscribe
 #endif
@@ -55,33 +53,6 @@ g_dbus_integrate_dbus_1_connection
 g_dbus_unintegrate_dbus_1_connection
 g_dbus_integrate_dbus_1_server
 g_dbus_unintegrate_dbus_1_server
-#endif
-#endif
-
-#if IN_HEADER(__G_BUS_NAME_OWNER_H__)
-#if IN_FILE(__G_BUS_NAME_OWNER_C__)
-g_bus_name_owner_get_type G_GNUC_CONST
-g_bus_name_owner_new
-g_bus_name_owner_new_for_connection
-g_bus_name_owner_get_owns_name
-g_bus_name_owner_get_name
-g_bus_name_owner_get_bus_type
-g_bus_name_owner_get_flags
-g_bus_name_owner_get_is_initialized
-g_bus_name_owner_get_connection
-#endif
-#endif
-
-#if IN_HEADER(__G_BUS_NAME_WATCHER_H__)
-#if IN_FILE(__G_BUS_NAME_WATCHER_C__)
-g_bus_name_watcher_get_type G_GNUC_CONST
-g_bus_name_watcher_new
-g_bus_name_watcher_new_for_connection
-g_bus_name_watcher_get_name_owner
-g_bus_name_watcher_get_name
-g_bus_name_watcher_get_bus_type
-g_bus_name_watcher_get_is_initialized
-g_bus_name_watcher_get_connection
 #endif
 #endif
 
@@ -127,6 +98,7 @@ g_bus_unwatch_proxy
 #if IN_HEADER(__G_DBUS_NAME_OWNING_H__)
 #if IN_FILE(__G_DBUS_NAME_OWNING_C__)
 g_bus_own_name
+g_bus_own_name_on_connection
 g_bus_unown_name
 #endif
 #endif

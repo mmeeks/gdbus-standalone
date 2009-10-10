@@ -45,23 +45,30 @@ typedef void (*GBusNameAcquiredCallback) (GDBusConnection *connection,
 
 /**
  * GBusNameLostCallback:
- * @connection: The #GDBusConnection on which to acquire the name.
+ * @connection: The #GDBusConnection on which to acquire the name or %NULL if
+ * the connection was disconnected.
  * @name: The name being owned.
  * @user_data: User data passed to g_bus_own_name().
  *
- * Invoked when the name is lost.
+ * Invoked when the name is lost or @connection has been disconnected.
  */
 typedef void (*GBusNameLostCallback) (GDBusConnection *connection,
                                       const gchar     *name,
                                       gpointer         user_data);
 
-guint g_bus_own_name   (GBusType                  bus_type,
-                        const gchar              *name,
-                        GBusNameOwnerFlags        flags,
-                        GBusNameAcquiredCallback  name_acquired_handler,
-                        GBusNameLostCallback      name_lost_handler,
-                        gpointer                  user_data);
-void  g_bus_unown_name (guint                     owner_id);
+guint g_bus_own_name                 (GBusType                  bus_type,
+                                      const gchar              *name,
+                                      GBusNameOwnerFlags        flags,
+                                      GBusNameAcquiredCallback  name_acquired_handler,
+                                      GBusNameLostCallback      name_lost_handler,
+                                      gpointer                  user_data);
+guint g_bus_own_name_on_connection   (GDBusConnection          *connection,
+                                      const gchar              *name,
+                                      GBusNameOwnerFlags        flags,
+                                      GBusNameAcquiredCallback  name_acquired_handler,
+                                      GBusNameLostCallback      name_lost_handler,
+                                      gpointer                  user_data);
+void  g_bus_unown_name               (guint                     owner_id);
 
 G_END_DECLS
 

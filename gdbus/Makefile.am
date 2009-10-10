@@ -4,20 +4,6 @@ NULL =
 
 SUBDIRS=. tests
 
-gdbus.def: gdbus.symbols
-	(echo -e EXPORTS; $(CPP) -P -DINCLUDE_VARIABLES -DINCLUDE_INTERNAL_SYMBOLS -DG_OS_WIN32 -DALL_FILES - <$(srcdir)/gdbus.symbols | sed -e '/^$$/d' -e 's/^/	/' -e 's/G_GNUC_[^ ]*//g' | sort) > gdbus.def.tmp && \
-	  mv gdbus.def.tmp gdbus.def
-
-gdbusalias.h: gdbus.symbols
-	$(PERL) $(srcdir)/makegdbusalias.pl < $(srcdir)/gdbus.symbols > gdbusalias.h.tmp && \
-	  mv gdbusalias.h.tmp gdbusalias.h
-
-gdbusaliasdef.c: gdbus.symbols
-	$(PERL) $(srcdir)/makegdbusalias.pl -def < $(srcdir)/gdbus.symbols > gdbusaliasdef.c.tmp && \
-	  mv gdbusaliasdef.c.tmp gdbusaliasdef.c
-
-TESTS = abicheck.sh pltcheck.sh
-
 AM_CPPFLAGS = \
 	-DG_LOG_DOMAIN=\"GLib-DBus-Standalone\"			\
 	-I$(top_builddir)					\
@@ -51,8 +37,6 @@ gdbus_headers =				\
 	gdbustypes.h			\
 	gdbuserror.h			\
 	gdbusconnection.h		\
-	gbusnameowner.h			\
-	gbusnamewatcher.h		\
 	gdbusnameowning.h		\
 	gdbusnamewatching.h		\
 	gdbusproxywatching.h		\
@@ -74,8 +58,6 @@ libgdbus_standalone_la_SOURCES =					\
 					gdbusctypemapping.c		\
 	gdbusconnection-lowlevel.h					\
 	gdbusconnection.h		gdbusconnection.c		\
-	gbusnameowner.h			gbusnameowner.c			\
-	gbusnamewatcher.h		gbusnamewatcher.c		\
 	gdbusnameowning.h		gdbusnameowning.c		\
 	gdbusnamewatching.h		gdbusnamewatching.c		\
 	gdbusproxywatching.h		gdbusproxywatching.c		\
@@ -148,12 +130,8 @@ BUILT_SOURCES = 			\
 
 EXTRA_DIST += 				\
 	gdbus-marshal.list		\
-	gdbus.symbols			\
 	gdbusenumtypes.h.template	\
 	gdbusenumtypes.c.template	\
-	makegdbusalias.pl		\
-	abicheck.sh			\
-	pltcheck.sh			\
 	$(NULL)
 
 CLEANFILES = 			\

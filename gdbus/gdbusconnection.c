@@ -46,10 +46,7 @@
  * easier to use the g_bus_own_name() or g_bus_watch_name() APIs.
  * </note></para>
  * #GDBusConnection is a thin wrapper class for the #DBusConnection
- * type that integrates with the GLib type system. The connection
- * state of the underlying connection is tracked and upon
- * disconnection, #GDBusConnection instances will attempt to reconnect
- * to the remote end.
+ * type that integrates with the GLib type system.
  *
  * TODO: stuff about caching unix_process_id etc. when we add that.
  */
@@ -61,12 +58,11 @@ struct _GDBusConnectionPrivate
   GBusType        bus_type;
   gboolean        is_private;
 
-  gboolean        is_initialized;
-
-  guint reconnect_timer_id;
+  gboolean is_initialized;
+  GError *initialization_error;
 
   /* unfortunately there is no dbus_connection_get_exit_on_disconnect() so we need to track this ourselves */
-  gboolean exit_on_close;
+  gboolean exit_on_disconnect;
 
   guint global_pending_call_id;
   GHashTable *pending_call_id_to_simple;
@@ -83,9 +79,7 @@ struct _GDBusConnectionPrivate
 
 enum
 {
-  OPENED_SIGNAL,
-  CLOSED_SIGNAL,
-  INITIALIZED_SIGNAL,
+  DISCONNECTED_SIGNAL,
   LAST_SIGNAL,
 };
 
@@ -95,26 +89,23 @@ enum
   PROP_BUS_TYPE,
   PROP_IS_PRIVATE,
   PROP_UNIQUE_NAME,
-  PROP_IS_OPEN,
-  PROP_IS_INITIALIZED,
-  PROP_EXIT_ON_CLOSE,
+  PROP_IS_DISCONNECTED,
+  PROP_EXIT_ON_DISCONNECT,
 };
 
 static void distribute_signals (GDBusConnection *connection,
                                 DBusMessage     *message);
 
 static void purge_all_signal_subscriptions (GDBusConnection *connection);
-static void purge_all_signal_subscriptions_for_unique_names (GDBusConnection *connection);
-static void add_current_signal_subscriptions (GDBusConnection *connection);
 
 G_LOCK_DEFINE_STATIC (connection_lock);
+
 static GDBusConnection *the_session_bus = NULL;
 static GDBusConnection *the_system_bus = NULL;
 
 static GObject *g_dbus_connection_constructor (GType                  type,
                                                guint                  n_construct_properties,
                                                GObjectConstructParam *construct_properties);
-static void g_dbus_connection_constructed (GObject *object);
 
 static DBusHandlerResult
 filter_function (DBusConnection *dbus_1_connection,
@@ -126,7 +117,13 @@ static guint signals[LAST_SIGNAL] = { 0 };
 static void g_dbus_connection_set_dbus_1_connection (GDBusConnection *connection,
                                                      DBusConnection  *dbus_1_connection);
 
-G_DEFINE_TYPE (GDBusConnection, g_dbus_connection, G_TYPE_OBJECT);
+static void initable_iface_init       (GInitableIface *initable_iface);
+static void async_initable_iface_init (GAsyncInitableIface *async_initable_iface);
+
+G_DEFINE_TYPE_WITH_CODE (GDBusConnection, g_dbus_connection, G_TYPE_OBJECT,
+                         G_IMPLEMENT_INTERFACE (G_TYPE_INITABLE, initable_iface_init)
+                         G_IMPLEMENT_INTERFACE (G_TYPE_ASYNC_INITABLE, async_initable_iface_init)
+                         );
 
 static void
 g_dbus_connection_dispose (GObject *object)
@@ -153,10 +150,10 @@ g_dbus_connection_finalize (GObject *object)
 {
   GDBusConnection *connection = G_DBUS_CONNECTION (object);
 
-  if (connection->priv->reconnect_timer_id > 0)
-    g_source_remove (connection->priv->reconnect_timer_id);
-
   g_dbus_connection_set_dbus_1_connection (connection, NULL);
+
+  if (connection->priv->initialization_error != NULL)
+    g_error_free (connection->priv->initialization_error);
 
   g_hash_table_destroy (connection->priv->pending_call_id_to_simple);
 
@@ -166,7 +163,9 @@ g_dbus_connection_finalize (GObject *object)
   g_hash_table_unref (connection->priv->map_sender_to_signal_data_array);
 
   if (connection->priv->idle_processing_event_source_id > 0)
-    g_source_remove (connection->priv->idle_processing_event_source_id);
+    {
+      g_source_remove (connection->priv->idle_processing_event_source_id);
+    }
   if (connection->priv->idle_processing_messages != NULL)
     {
       g_ptr_array_foreach (connection->priv->idle_processing_messages, (GFunc) dbus_message_unref, NULL);
@@ -199,16 +198,8 @@ g_dbus_connection_get_property (GObject    *object,
       g_value_set_string (value, g_dbus_connection_get_unique_name (connection));
       break;
 
-    case PROP_IS_OPEN:
-      g_value_set_boolean (value, g_dbus_connection_get_is_open (connection));
-      break;
-
-    case PROP_IS_INITIALIZED:
-      g_value_set_boolean (value, g_dbus_connection_get_is_initialized (connection));
-      break;
-
-    case PROP_EXIT_ON_CLOSE:
-      g_value_set_boolean (value, g_dbus_connection_get_exit_on_close (connection));
+    case PROP_IS_DISCONNECTED:
+      g_value_set_boolean (value, g_dbus_connection_get_is_disconnected (connection));
       break;
 
     default:
@@ -235,8 +226,8 @@ g_dbus_connection_set_property (GObject      *object,
       connection->priv->is_private = g_value_get_boolean (value);
       break;
 
-    case PROP_EXIT_ON_CLOSE:
-      g_dbus_connection_set_exit_on_close (connection, g_value_get_boolean (value));
+    case PROP_EXIT_ON_DISCONNECT:
+      g_dbus_connection_set_exit_on_disconnect (connection, g_value_get_boolean (value));
       break;
 
     default:
@@ -255,7 +246,6 @@ g_dbus_connection_class_init (GDBusConnectionClass *klass)
   gobject_class = G_OBJECT_CLASS (klass);
 
   gobject_class->constructor  = g_dbus_connection_constructor;
-  gobject_class->constructed  = g_dbus_connection_constructed;
   gobject_class->finalize     = g_dbus_connection_finalize;
   gobject_class->dispose      = g_dbus_connection_dispose;
   gobject_class->set_property = g_dbus_connection_set_property;
@@ -329,15 +319,15 @@ g_dbus_connection_class_init (GDBusConnectionClass *klass)
                                                         G_PARAM_STATIC_NICK));
 
   /**
-   * GDBusConnection:is-open:
+   * GDBusConnection:is-disconnected:
    *
-   * A boolean specifying whether a connection the is open.
+   * A boolean specifying whether the connection has been disconnected.
    */
   g_object_class_install_property (gobject_class,
-                                   PROP_IS_OPEN,
-                                   g_param_spec_boolean ("is-open",
-                                                         _("is-open"),
-                                                         _("Whether the connection is open"),
+                                   PROP_IS_DISCONNECTED,
+                                   g_param_spec_boolean ("is-disconnected",
+                                                         _("is-disconnected"),
+                                                         _("Whether the connection has been disconnected"),
                                                          FALSE,
                                                          G_PARAM_READABLE |
                                                          G_PARAM_STATIC_NAME |
@@ -345,88 +335,42 @@ g_dbus_connection_class_init (GDBusConnectionClass *klass)
                                                          G_PARAM_STATIC_NICK));
 
   /**
-   * GDBusConnection:is-initialized:
-   *
-   * A boolean specifying whether the connection is initialized. You are guaranteed that
-   * this signal fires only once.
-   */
-  g_object_class_install_property (gobject_class,
-                                   PROP_IS_INITIALIZED,
-                                   g_param_spec_boolean ("is-initialized",
-                                                         _("is-initialized"),
-                                                         _("Whether the connection is initialized"),
-                                                         FALSE,
-                                                         G_PARAM_READABLE |
-                                                         G_PARAM_STATIC_NAME |
-                                                         G_PARAM_STATIC_BLURB |
-                                                         G_PARAM_STATIC_NICK));
-
-  /**
-   * GDBusConnection:exit-on-close:
+   * GDBusConnection:exit-on-disconnect:
    *
    * A boolean specifying whether _exit() should be called when the
-   * connection is closed.
+   * connection has been disconnected.
    */
   g_object_class_install_property (gobject_class,
-                                   PROP_EXIT_ON_CLOSE,
-                                   g_param_spec_boolean ("exit-on-close",
-                                                         _("exit-on-close"),
-                                                         _("Whether _exit() is called when the connection is closed"),
+                                   PROP_EXIT_ON_DISCONNECT,
+                                   g_param_spec_boolean ("exit-on-disconnect",
+                                                         _("exit-on-disconnect"),
+                                                         _("Whether _exit() is called when the connection has been disconnected"),
                                                          TRUE,
-                                                         G_PARAM_READABLE |
                                                          G_PARAM_WRITABLE |
                                                          G_PARAM_CONSTRUCT |
                                                          G_PARAM_STATIC_NAME |
                                                          G_PARAM_STATIC_BLURB |
                                                          G_PARAM_STATIC_NICK));
 
-  /**
-   * GDBusConnection::opened:
-   * @connection: The #GDBusConnection emitting the signal.
-   *
-   * Emitted when the connection has been opened.
-   **/
-  signals[OPENED_SIGNAL] = g_signal_new ("opened",
-                                         G_TYPE_DBUS_CONNECTION,
-                                         G_SIGNAL_RUN_LAST,
-                                         G_STRUCT_OFFSET (GDBusConnectionClass, opened),
-                                         NULL,
-                                         NULL,
-                                         g_cclosure_marshal_VOID__VOID,
-                                         G_TYPE_NONE,
-                                         0);
 
   /**
-   * GDBusConnection::closed:
+   * GDBusConnection::disconnected:
    * @connection: The #GDBusConnection emitting the signal.
    *
-   * Emitted when the connection is no longer open.
-   **/
-  signals[CLOSED_SIGNAL] = g_signal_new ("closed",
-                                         G_TYPE_DBUS_CONNECTION,
-                                         G_SIGNAL_RUN_LAST,
-                                         G_STRUCT_OFFSET (GDBusConnectionClass, closed),
-                                         NULL,
-                                         NULL,
-                                         g_cclosure_marshal_VOID__VOID,
-                                         G_TYPE_NONE,
-                                         0);
-
-  /**
-   * GDBusConnection::initialized:
-   * @connection: The #GDBusConnection emitting the signal.
+   * Emitted when the connection has been disconnected. You should
+   * give up your reference to @connection when receiving this signal.
    *
-   * Emitted when the connection is is initialized.
+   * You are guaranteed that this signal is emitted only once.
    **/
-  signals[INITIALIZED_SIGNAL] = g_signal_new ("initialized",
-                                              G_TYPE_DBUS_CONNECTION,
-                                              G_SIGNAL_RUN_LAST,
-                                              G_STRUCT_OFFSET (GDBusConnectionClass, initialized),
-                                              NULL,
-                                              NULL,
-                                              g_cclosure_marshal_VOID__VOID,
-                                              G_TYPE_NONE,
-                                              0);
+  signals[DISCONNECTED_SIGNAL] = g_signal_new ("disconnected",
+                                               G_TYPE_DBUS_CONNECTION,
+                                               G_SIGNAL_RUN_LAST,
+                                               G_STRUCT_OFFSET (GDBusConnectionClass, disconnected),
+                                               NULL,
+                                               NULL,
+                                               g_cclosure_marshal_VOID__VOID,
+                                               G_TYPE_NONE,
+                                               0);
 }
 
 static void
@@ -434,11 +378,8 @@ g_dbus_connection_init (GDBusConnection *connection)
 {
   connection->priv = G_TYPE_INSTANCE_GET_PRIVATE (connection, G_TYPE_DBUS_CONNECTION, GDBusConnectionPrivate);
 
-  connection->priv->is_initialized = FALSE;
-
   connection->priv->global_pending_call_id = 1;
   connection->priv->pending_call_id_to_simple = g_hash_table_new (g_direct_hash, g_direct_equal);
-
 
   connection->priv->map_rule_to_signal_data = g_hash_table_new (g_str_hash,
                                                                 g_str_equal);
@@ -476,44 +417,19 @@ g_dbus_connection_get_bus_type (GDBusConnection *connection)
 
 
 /**
- * g_dbus_connection_get_is_open:
+ * g_dbus_connection_get_is_disconnected:
  * @connection: A #GDBusConnection.
  *
- * Gets whether a connection is open.
- *
- * To listen for changes connect to the #GDBusConnection::opened and
- * #GDBusConnection::closed signals or listen for notifications on the
- * #GDBusConnection:is-open property.
+ * Gets whether a connection has been disconnected.
  *
  * Returns: %TRUE if the connection is open, %FALSE otherwise.
  **/
 gboolean
-g_dbus_connection_get_is_open (GDBusConnection *connection)
+g_dbus_connection_get_is_disconnected (GDBusConnection *connection)
 {
   g_return_val_if_fail (G_IS_DBUS_CONNECTION (connection), FALSE);
 
-  return connection->priv->dbus_1_connection != NULL &&
-    dbus_connection_get_is_connected (connection->priv->dbus_1_connection);
-}
-
-/**
- * g_dbus_connection_get_is_initialized:
- * @connection: A #GDBusConnection.
- *
- * Gets whether @connection is initialized.
- *
- * To listen for changes connect to the #GDBusConnection::initialized
- * signal or listen for notifications on the #GDBusConnection:is-initialized
- * property.
- *
- * Returns: %TRUE if the connection is initialized, %FALSE otherwise.
- **/
-gboolean
-g_dbus_connection_get_is_initialized (GDBusConnection *connection)
-{
-  g_return_val_if_fail (G_IS_DBUS_CONNECTION (connection), FALSE);
-
-  return connection->priv->is_initialized;
+  return connection->priv->dbus_1_connection == NULL;
 }
 
 /**
@@ -542,7 +458,7 @@ g_dbus_connection_get_is_private (GDBusConnection *connection)
  *
  * Gets the underlying #DBusConnection object for @connection.
  *
- * Returns: %NULL if the connection is not open, otherwise a
+ * Returns: %NULL if the connection has been disconnected, otherwise a
  * #DBusConnection object owned by @connection.
  **/
 DBusConnection *
@@ -555,6 +471,7 @@ g_dbus_connection_get_dbus_1_connection (GDBusConnection *connection)
 
 /* ---------------------------------------------------------------------------------------------------- */
 
+#if 0
 static gboolean
 attempt_connect (GDBusConnection  *connection,
                  GError          **error)
@@ -613,32 +530,7 @@ attempt_connect (GDBusConnection  *connection,
 
   return ret;
 }
-
-static gboolean
-reconnect_timeout (gpointer user_data)
-{
-  GDBusConnection *connection = G_DBUS_CONNECTION (user_data);
-  gboolean keep_timeout;
-
-  keep_timeout = TRUE;
-  if (attempt_connect (connection, NULL))
-    {
-      keep_timeout = FALSE;
-      connection->priv->reconnect_timer_id = 0;
-    }
-
-  return keep_timeout;
-}
-
-static void
-setup_reconnect_timer (GDBusConnection *connection)
-{
-  g_assert (connection->priv->reconnect_timer_id == 0);
-
-  connection->priv->reconnect_timer_id = g_timeout_add_seconds (1,
-                                                                reconnect_timeout,
-                                                                connection);
-}
+#endif
 
 /* ---------------------------------------------------------------------------------------------------- */
 
@@ -704,15 +596,8 @@ process_message (GDBusConnection *connection,
         {
           g_dbus_connection_set_dbus_1_connection (connection, NULL);
 
-          //g_object_notify (G_OBJECT (bus), "unique-name");
-
-          purge_all_signal_subscriptions_for_unique_names (connection);
-
-          g_object_notify (G_OBJECT (connection), "is-open");
-          g_signal_emit (connection, signals[CLOSED_SIGNAL], 0);
-
-          /* set up timer for attempting to reconnect */
-          setup_reconnect_timer (connection);
+          g_object_notify (G_OBJECT (connection), "is-disconnected");
+          g_signal_emit (connection, signals[DISCONNECTED_SIGNAL], 0);
         }
     }
 
@@ -726,6 +611,9 @@ process_messages_in_idle (gpointer user_data)
   GDBusConnection *connection = G_DBUS_CONNECTION (user_data);
   guint n;
 
+  /* need to own a ref since the signal handlers we call may unref the connection */
+  g_object_ref (connection);
+
   for (n = 0; n < connection->priv->idle_processing_messages->len; n++)
     {
       DBusMessage *message = connection->priv->idle_processing_messages->pdata[n];
@@ -737,6 +625,9 @@ process_messages_in_idle (gpointer user_data)
                             0,
                             connection->priv->idle_processing_messages->len);
   connection->priv->idle_processing_event_source_id = 0;
+
+  g_object_unref (connection);
+
   return FALSE;
 }
 
@@ -814,39 +705,12 @@ g_dbus_connection_set_dbus_1_connection (GDBusConnection *connection,
                                        NULL))
         _g_dbus_oom ();
       dbus_connection_set_exit_on_disconnect (connection->priv->dbus_1_connection,
-                                              connection->priv->exit_on_close);
+                                              connection->priv->exit_on_disconnect);
     }
   else
     {
       connection->priv->dbus_1_connection = NULL;
     }
-}
-
-/* ---------------------------------------------------------------------------------------------------- */
-
-static gboolean
-attempt_to_connect_in_idle (gpointer user_data)
-{
-  GDBusConnection *connection = G_DBUS_CONNECTION (user_data);
-
-  /* if our initial attempt to connect failed, set up timer for reconnection */
-  if (!attempt_connect (connection, NULL))
-    setup_reconnect_timer (connection);
-
-  g_object_unref (connection);
-  return FALSE;
-}
-
-static void
-g_dbus_connection_constructed (GObject *object)
-{
-  GDBusConnection *connection = G_DBUS_CONNECTION (object);
-
-  /* attempt to open the connection in idle */
-  g_idle_add (attempt_to_connect_in_idle, g_object_ref (connection));
-
-  if (G_OBJECT_CLASS (g_dbus_connection_parent_class)->constructed != NULL)
-    G_OBJECT_CLASS (g_dbus_connection_parent_class)->constructed (object);
 }
 
 /* ---------------------------------------------------------------------------------------------------- */
@@ -944,91 +808,367 @@ g_dbus_connection_constructor (GType                  type,
 
 /* ---------------------------------------------------------------------------------------------------- */
 
-/**
- * g_dbus_connection_bus_get:
- * @bus_type: A #GBusType.
- *
- * Gets a connection to the message bus specified by @bus_type.
- *
- * Since connecting to a message bus is an asynchronous operation, the returned object is
- * not guaranteed to return correct information until it has been initialized.
- * Use g_dbus_connection_get_is_initialized() to check whether the object is initialized
- * and connect to the #GDBusConnection::initialized signal or listen for notifications
- * on the #GDBusConnection:is-initialized property to get informed when it is.
- *
- * Note that the returned object may shared with other callers,
- * e.g. if two separate parts of a process calls this function with
- * the same @bus_type, they will share the same object. As such, the object
- * may already have been initialized when it is returned.
- *
- * #GDBusConnection deals gracefully with the underlying connection
- * being closed. Once the remote process is back up, an attempt to
- * reconnect will be made.
- *
- * Returns: A #GDBusConnection. Free with g_object_unref().
- **/
-GDBusConnection *
-g_dbus_connection_bus_get (GBusType bus_type)
+static gboolean
+initable_init (GInitable       *initable,
+               GCancellable    *cancellable,
+               GError         **error)
 {
-  return G_DBUS_CONNECTION (g_object_new (G_TYPE_DBUS_CONNECTION,
-                                          "bus-type", bus_type,
-                                          NULL));
+  GDBusConnection *connection = G_DBUS_CONNECTION (initable);
+  DBusConnection *dbus_1_connection;
+  DBusError dbus_error;
+  gboolean ret;
+
+  G_LOCK (connection_lock);
+
+  ret = FALSE;
+
+  if (connection->priv->is_initialized)
+    {
+      if (connection->priv->dbus_1_connection != NULL)
+        {
+          ret = TRUE;
+        }
+      else
+        {
+          g_assert (connection->priv->initialization_error != NULL);
+          g_propagate_error (error, g_error_copy (connection->priv->initialization_error));
+        }
+      goto out;
+    }
+
+  g_assert (connection->priv->dbus_1_connection == NULL);
+  g_assert (connection->priv->initialization_error == NULL);
+
+  dbus_error_init (&dbus_error);
+  g_assert (connection->priv->bus_type != G_BUS_TYPE_NONE); // until we have constructors with @address
+  if (connection->priv->is_private)
+    {
+      dbus_1_connection = dbus_bus_get_private (connection->priv->bus_type,
+                                                &dbus_error);
+    }
+  else
+    {
+      /* For now, get a private bus even if it's shared... This can only
+       * be changed once the bug referenced in filter_function() is resolved.
+       */
+      dbus_1_connection = dbus_bus_get_private (connection->priv->bus_type,
+                                                &dbus_error);
+    }
+
+  if (dbus_1_connection != NULL)
+    {
+      g_dbus_connection_set_dbus_1_connection (connection, dbus_1_connection);
+      dbus_connection_unref (dbus_1_connection);
+      ret = TRUE;
+    }
+  else
+    {
+      g_dbus_error_set_dbus_error (&connection->priv->initialization_error,
+                                   &dbus_error,
+                                   NULL,
+                                   NULL);
+      dbus_error_free (&dbus_error);
+      g_propagate_error (error, g_error_copy (connection->priv->initialization_error));
+    }
+
+  connection->priv->is_initialized = TRUE;
+
+ out:
+  G_UNLOCK (connection_lock);
+  return ret;
 }
 
-/**
- * g_dbus_connection_bus_get_private:
- * @bus_type: A #GBusType.
- *
- * Like g_dbus_connection_bus_get() but gets a connection that is not
- * shared with other callers.
- *
- * Returns: A #GDBusConnection. Free with g_object_unref().
- **/
-GDBusConnection *
-g_dbus_connection_bus_get_private (GBusType bus_type)
+static void
+initable_iface_init (GInitableIface *initable_iface)
 {
-  return G_DBUS_CONNECTION (g_object_new (G_TYPE_DBUS_CONNECTION,
-                                          "bus-type", bus_type,
-                                          "is-private", TRUE,
-                                          NULL));
+  initable_iface->init = initable_init;
+}
+
+/* ---------------------------------------------------------------------------------------------------- */
+
+static void
+async_initable_init_async (GAsyncInitable     *initable,
+                           gint                io_priority,
+                           GCancellable       *cancellable,
+                           GAsyncReadyCallback callback,
+                           gpointer            user_data)
+{
+  GSimpleAsyncResult *simple;
+  GError *error;
+
+  simple = g_simple_async_result_new (G_OBJECT (initable),
+                                      callback,
+                                      user_data,
+                                      async_initable_init_async);
+
+  /* for now, we just do this asynchronously and complete in idle since libdbus has no way
+   * to do it asynchronously
+   */
+  error = NULL;
+  if (!initable_init (G_INITABLE (initable),
+                      cancellable,
+                      &error))
+    {
+      g_simple_async_result_set_from_error (simple, error);
+      g_error_free (error);
+    }
+
+  g_simple_async_result_complete_in_idle (simple);
+  g_object_unref (simple);
+}
+
+static gboolean
+async_initable_init_finish (GAsyncInitable  *initable,
+                            GAsyncResult    *res,
+                            GError         **error)
+{
+  GSimpleAsyncResult *simple = G_SIMPLE_ASYNC_RESULT (res);
+
+  g_warn_if_fail (g_simple_async_result_get_source_tag (simple) == async_initable_init_async);
+
+  if (g_simple_async_result_propagate_error (simple, error))
+    return FALSE;
+  return TRUE;
+}
+
+static void
+async_initable_iface_init (GAsyncInitableIface *async_initable_iface)
+{
+  async_initable_iface->init_async = async_initable_init_async;
+  async_initable_iface->init_finish = async_initable_init_finish;
 }
 
 /* ---------------------------------------------------------------------------------------------------- */
 
 /**
- * g_dbus_connection_get_exit_on_close:
- * @connection: A #GDBusConnection.
+ * g_dbus_connection_bus_get_sync:
+ * @bus_type: A #GBusType.
+ * @cancellable: A #GCancellable or %NULL.
+ * @error: Return location for error or %NULL.
  *
- * Gets whether _exit() is called when @connection is closed.
+ * Synchronously connects to the message bus specified by @bus_type.
+ * Note that the returned object may shared with other callers,
+ * e.g. if two separate parts of a process calls this function with
+ * the same @bus_type, they will share the same object.
  *
- * Returns: %TRUE if _exit() is called when @connection is closed.
+ * Use g_dbus_connection_bus_get_private_sync() to get a private
+ * connection.
+ *
+ * This is a synchronous failable constructor. See
+ * g_dbus_connection_bus_get() and g_dbus_connection_bus_get_finish()
+ * for the asynchronous version.
+ *
+ * Returns: A #GDBusConnection or %NULL if @error is set. Free with g_object_unref().
  **/
-gboolean
-g_dbus_connection_get_exit_on_close (GDBusConnection *connection)
+GDBusConnection *
+g_dbus_connection_bus_get_sync (GBusType            bus_type,
+                                GCancellable       *cancellable,
+                                GError            **error)
 {
-  g_return_val_if_fail (G_IS_DBUS_CONNECTION (connection), FALSE);
+  GInitable *initable;
 
-  return connection->priv->exit_on_close;
+  initable = g_initable_new (G_TYPE_DBUS_CONNECTION,
+                             cancellable,
+                             error,
+                             "bus-type", bus_type,
+                             NULL);
+
+  if (initable != NULL)
+    return G_DBUS_CONNECTION (initable);
+  else
+    return NULL;
 }
 
 /**
- * g_dbus_connection_set_exit_on_close:
- * @connection: A #GDBusConnection.
- * @exit_on_close: Whether _exit() should be called when @connection is
- * closed.
+ * g_dbus_connection_bus_get:
+ * @bus_type: A #GBusType.
+ * @cancellable: A #GCancellable or %NULL.
+ * @callback: A #GAsyncReadyCallback to call when the request is satisfied
+ * @user_data: The data to pass to @callback.
  *
- * Sets whether _exit() should be called when @connection is closed.
+ * Asynchronously connects to the message bus specified by @bus_type.
+ *
+ * When the operation is finished, @callback will be invoked. You can
+ * then call g_dbus_connection_bus_get_finish() to get the result of
+ * the operation.
+ *
+ * Use g_dbus_connection_bus_get_private() to get a private
+ * connection.
+ *
+ * This is a asynchronous failable constructor. See
+ * g_dbus_connection_bus_get_sync() for the synchronous version.
  **/
 void
-g_dbus_connection_set_exit_on_close (GDBusConnection *connection,
-                                     gboolean         exit_on_close)
+g_dbus_connection_bus_get (GBusType             bus_type,
+                           GCancellable        *cancellable,
+                           GAsyncReadyCallback  callback,
+                           gpointer             user_data)
+{
+  g_async_initable_new_async (G_TYPE_DBUS_CONNECTION,
+                              G_PRIORITY_DEFAULT,
+                              cancellable,
+                              callback,
+                              user_data,
+                              "bus-type", bus_type,
+                              NULL);
+}
+
+/**
+ * g_dbus_connection_bus_get_finish:
+ * @res: A #GAsyncResult obtained from the #GAsyncReadyCallback passed to g_dbus_connection_bus_get().
+ * @error: Return location for error or %NULL.
+ *
+ * Finishes an operation started with g_dbus_connection_bus_get().
+ *
+ * Note that the returned object may shared with other callers,
+ * e.g. if two separate parts of a process calls this function with
+ * the same @bus_type, they will share the same object.
+ *
+ * Returns: A #GDBusConnection or %NULL if @error is set. Free with g_object_unref().
+ **/
+GDBusConnection *
+g_dbus_connection_bus_get_finish (GAsyncResult  *res,
+                                  GError       **error)
+{
+  GObject *object;
+  GObject *source_object;
+
+  source_object = g_async_result_get_source_object (res);
+  g_assert (source_object != NULL);
+
+  object = g_async_initable_new_finish (G_ASYNC_INITABLE (source_object),
+                                        res,
+                                        error);
+  g_object_unref (source_object);
+
+  if (object != NULL)
+    return G_DBUS_CONNECTION (object);
+  else
+    return NULL;
+}
+
+
+/* ---------------------------------------------------------------------------------------------------- */
+
+/**
+ * g_dbus_connection_bus_get_private_sync:
+ * @bus_type: A #GBusType.
+ * @cancellable: A #GCancellable or %NULL.
+ * @error: Return location for error or %NULL.
+ *
+ * Like g_dbus_connection_bus_get_sync() but gets a connection that is not
+ * shared with other callers.
+ *
+ * Returns: A #GDBusConnection. Free with g_object_unref().
+ **/
+GDBusConnection *
+g_dbus_connection_bus_get_private_sync (GBusType        bus_type,
+                                        GCancellable   *cancellable,
+                                        GError        **error)
+{
+  GInitable *initable;
+
+  initable = g_initable_new (G_TYPE_DBUS_CONNECTION,
+                             cancellable,
+                             error,
+                             "bus-type", bus_type,
+                             "is-private", TRUE,
+                             NULL);
+
+  if (initable != NULL)
+    return G_DBUS_CONNECTION (initable);
+  else
+    return NULL;
+}
+
+/**
+ * g_dbus_connection_bus_get_private:
+ * @bus_type: A #GBusType.
+ * @cancellable: A #GCancellable or %NULL.
+ * @callback: A #GAsyncReadyCallback to call when the request is satisfied
+ * @user_data: The data to pass to @callback.
+ *
+ * Asynchronously connects to the message bus specified by @bus_type
+ * using a private connection.
+ *
+ * When the operation is finished, @callback will be invoked. You can
+ * then call g_dbus_connection_bus_get_finish() to get the result of
+ * the operation.
+ *
+ * Use g_dbus_connection_bus_get() to get a shared connection.
+ *
+ * This is a asynchronous failable constructor. See
+ * g_dbus_connection_bus_get_private_sync() for the synchronous
+ * version.
+ **/
+void
+g_dbus_connection_bus_get_private (GBusType             bus_type,
+                                   GCancellable        *cancellable,
+                                   GAsyncReadyCallback  callback,
+                                   gpointer             user_data)
+{
+  g_async_initable_new_async (G_TYPE_DBUS_CONNECTION,
+                              G_PRIORITY_DEFAULT,
+                              cancellable,
+                              callback,
+                              user_data,
+                              "bus-type", bus_type,
+                              "is-private", TRUE,
+                              NULL);
+}
+
+/**
+ * g_dbus_connection_bus_get_private_finish:
+ * @res: A #GAsyncResult obtained from the #GAsyncReadyCallback passed to g_dbus_connection_bus_get_private().
+ * @error: Return location for error or %NULL.
+ *
+ * Finishes an operation started with g_dbus_connection_bus_get_private().
+ *
+ * The returned object is never shared with other callers.
+ *
+ * Returns: A #GDBusConnection or %NULL if @error is set. Free with g_object_unref().
+ **/
+GDBusConnection *
+g_dbus_connection_bus_get_private_finish (GAsyncResult  *res,
+                                          GError       **error)
+{
+  GObject *object;
+  GObject *source_object;
+
+  source_object = g_async_result_get_source_object (res);
+  g_assert (source_object != NULL);
+
+  object = g_async_initable_new_finish (G_ASYNC_INITABLE (source_object),
+                                        res,
+                                        error);
+  g_object_unref (source_object);
+
+  if (object != NULL)
+    return G_DBUS_CONNECTION (object);
+  else
+    return NULL;
+}
+
+/* ---------------------------------------------------------------------------------------------------- */
+
+/**
+ * g_dbus_connection_set_exit_on_disconnect:
+ * @connection: A #GDBusConnection.
+ * @exit_on_disconnect: Whether _exit() should be called when @connection is
+ * disconnected.
+ *
+ * Sets whether _exit() should be called when @connection is disconnected.
+ **/
+void
+g_dbus_connection_set_exit_on_disconnect (GDBusConnection *connection,
+                                          gboolean         exit_on_disconnect)
 {
   g_return_if_fail (G_IS_DBUS_CONNECTION (connection));
 
-  connection->priv->exit_on_close = exit_on_close;
+  connection->priv->exit_on_disconnect = exit_on_disconnect;
   if (connection->priv->dbus_1_connection != NULL)
     dbus_connection_set_exit_on_disconnect (connection->priv->dbus_1_connection,
-                                            connection->priv->exit_on_close);
+                                            connection->priv->exit_on_disconnect);
 }
 
 /**
@@ -1037,8 +1177,8 @@ g_dbus_connection_set_exit_on_close (GDBusConnection *connection,
  *
  * Gets the unique name of @connection as assigned by the message bus.
  *
- * Returns: The unique name or %NULL if the connection is closed or
- * @connection is not a message bus connection. Do not free this
+ * Returns: The unique name or %NULL if the connection is disconnected
+ * or @connection is not a message bus connection. Do not free this
  * string, it is owned by @connection.
  **/
 const gchar *
@@ -1066,7 +1206,7 @@ g_dbus_connection_get_unique_name (GDBusConnection *connection)
  * This function is marked as unstable API. You must include <literal>gdbus/gdbus-lowlevel.h</literal> to use it.
  * </note></para>
  *
- * Sends @message on @connection. If @connection is closed, this function is a no-op.
+ * Sends @message on @connection. If @connection is disconnected, this function is a no-op.
  *
  * This function is intended for use by object mappings only.
  **/
@@ -1173,8 +1313,7 @@ send_dbus_1_message_with_reply_cancelled_cb (GCancellable *cancellable,
  * Note that it is considered a programming error if @message is not a
  * method-call message.
  *
- * It is not considered a programming error to use this function if @connection is
- * closed - sending the message will fail with %G_DBUS_ERROR_FAILED.
+ * If @connection is disconnected then the operatoin will fail with %G_DBUS_ERROR_DISCONNECTED.
  *
  * This function is intended for use by object mappings only.
  *
@@ -1219,7 +1358,7 @@ g_dbus_connection_send_dbus_1_message_with_reply (GDBusConnection    *connection
     {
       g_simple_async_result_set_error (simple,
                                        G_DBUS_ERROR,
-                                       G_DBUS_ERROR_FAILED,
+                                       G_DBUS_ERROR_DISCONNECTED,
                                        _("Not connected"));
       g_simple_async_result_complete_in_idle (simple);
       g_object_unref (simple);
@@ -1290,8 +1429,8 @@ g_dbus_connection_send_dbus_1_message_with_reply (GDBusConnection    *connection
  * Finishes sending a message with reply.
  *
  * Note that @error is only set if the #GCancellable passed to g_dbus_connection_send_dbus_1_message_with_reply()
- * was cancelled (in which case %G_DBUS_ERROR_CANCELLED is returned) or if @connection was not open (in
- * which case %G_DBUS_ERROR_FAILED is returned). Specifically, the returned #DBusMessage message can
+ * was cancelled (in which case %G_DBUS_ERROR_CANCELLED is returned) or if @connection was disconnected (in
+ * which case %G_DBUS_ERROR_DISCONNECTED is returned). Specifically, the returned #DBusMessage message can
  * be an error message (cf. dbus_message_is_error()). If your object mapping uses #GError you can use
  * the utility function g_dbus_error_new_for_dbus_error() to map this to a #GError.
  *
@@ -1654,17 +1793,14 @@ is_signal_data_for_name_lost_or_acquired (SignalData *signal_data)
  * </note></para>
  *
  * Subscribes to signals on @connection and invokes @callback with a #DBusMessage whenever the signal
- * is received. This function handles setting up match rules on the bus including adding them back
- * if the connection is closed and opens again. Note that subscriptions on unique names are never
- * added back. Specifically, all subscriptions on unique names are removed when the connection is
- * closed so @user_data_free_func may be invoked at any time.
+ * is received.
  *
- * It is considered a programming error to use this function if @connection is not open.
+ * It is considered a programming error to use this function if @connection has been disconnected.
  *
  * Note that if @sender is not <literal>org.freedesktop.DBus</literal> (for listening to signals from the
  * message bus daemon), then it needs to be a unique bus name or %NULL (for listening to signals from any
  * name) - you cannot pass a name like <literal>com.example.MyApp</literal>.
- * Use #GBusNameWatcher to find the unique name for the owner of the name you are interested in. Also note
+ * Use e.g. g_bus_watch_name() to find the unique name for the owner of the name you are interested in. Also note
  * that this function does not remove a subscription if @sender vanishes from the bus. You have to manually
  * call g_dbus_connection_dbus_1_signal_unsubscribe() to remove a subscription.
  *
@@ -1699,7 +1835,7 @@ g_dbus_connection_dbus_1_signal_subscribe (GDBusConnection     *connection,
    */
 
   g_return_val_if_fail (G_IS_DBUS_CONNECTION (connection), 0);
-  g_return_val_if_fail (g_dbus_connection_get_is_open (connection), 0);
+  g_return_val_if_fail (!g_dbus_connection_get_is_disconnected (connection), 0);
   g_return_val_if_fail (sender == NULL || ((strcmp (sender, DBUS_SERVICE_DBUS) == 0 || sender[0] == ':')), 0);
   g_return_val_if_fail (callback != NULL, 0);
   /* TODO: check that passed in data is well-formed */
@@ -1810,14 +1946,16 @@ unsubscribe_id_internal (GDBusConnection    *connection,
       g_assert (g_ptr_array_remove (signal_data_array, signal_data));
 
       if (signal_data_array->len == 0)
-        g_assert (g_hash_table_remove (connection->priv->map_sender_to_signal_data_array, signal_data->sender));
+        {
+          g_assert (g_hash_table_remove (connection->priv->map_sender_to_signal_data_array, signal_data->sender));
 
-      /* remove the match rule from the bus unless NameLost or NameAcquired (see subscribe()) */
-      if (!is_signal_data_for_name_lost_or_acquired (signal_data) &&
-          connection->priv->dbus_1_connection != NULL)
-        remove_match_rule (connection, signal_data->rule);
+          /* remove the match rule from the bus unless NameLost or NameAcquired (see subscribe()) */
+          if (!is_signal_data_for_name_lost_or_acquired (signal_data) &&
+              connection->priv->dbus_1_connection != NULL)
+            remove_match_rule (connection, signal_data->rule);
 
-      signal_data_free (signal_data);
+          signal_data_free (signal_data);
+        }
 
       goto out;
     }
@@ -2015,71 +2153,6 @@ purge_all_signal_subscriptions (GDBusConnection *connection)
   g_array_free (subscribers, TRUE);
 }
 
-/* called when disconnected, removes all subscriptions for rules using unique names */
-static void
-purge_all_signal_subscriptions_for_unique_names (GDBusConnection *connection)
-{
-  GHashTableIter iter;
-  gpointer key;
-  gpointer value;
-  GArray *ids;
-  GArray *subscribers;
-  guint n;
-
-  G_LOCK (connection_lock);
-  ids = g_array_new (FALSE, FALSE, sizeof (guint));
-  g_hash_table_iter_init (&iter, connection->priv->map_id_to_signal_data);
-  while (g_hash_table_iter_next (&iter, &key, &value))
-    {
-      guint subscription_id = GPOINTER_TO_UINT (key);
-      SignalData *signal_data = value;
-      if (signal_data->sender != NULL && signal_data->sender[0] == ':')
-        {
-          g_array_append_val (ids, subscription_id);
-        }
-    }
-
-  subscribers = g_array_new (FALSE, FALSE, sizeof (SignalSubscriber));
-  for (n = 0; n < ids->len; n++)
-    {
-      guint subscription_id = g_array_index (ids, guint, n);
-      unsubscribe_id_internal (connection,
-                               subscription_id,
-                               subscribers);
-    }
-  g_array_free (ids, TRUE);
-
-  G_UNLOCK (connection_lock);
-
-  /* call GDestroyNotify without lock held */
-  for (n = 0; n < subscribers->len; n++)
-    {
-      SignalSubscriber *subscriber;
-      subscriber = &(g_array_index (subscribers, SignalSubscriber, n));
-      if (subscriber->user_data_free_func != NULL)
-        subscriber->user_data_free_func (subscriber->user_data);
-    }
-
-  g_array_free (subscribers, TRUE);
-}
-
-/* called when connection, adds match rules for current subscriptions (guaranteed to not be using unique names) */
-static void
-add_current_signal_subscriptions (GDBusConnection *connection)
-{
-  GHashTableIter iter;
-  gpointer key;
-
-  G_LOCK (connection_lock);
-  g_hash_table_iter_init (&iter, connection->priv->map_rule_to_signal_data);
-  while (g_hash_table_iter_next (&iter, &key, NULL))
-    {
-      const gchar *match_rule = key;
-      add_match_rule (connection, match_rule);
-    }
-  G_UNLOCK (connection_lock);
-}
-
 /* ---------------------------------------------------------------------------------------------------- */
 
 /* TODO: mark this function as (skip) so it won't show up in bindings
@@ -2170,18 +2243,16 @@ free_c_subscriber (CSignalSubscriber *subscriber)
  * @user_data: User data to pass to @callback.
  * @user_data_free_func: Function to free @user_data when subscription is removed or %NULL.
  *
- * Subscribes to signals on @connection and invokes @callback with a the contents of the signal whenever
- * it is received. This function handles setting up match rules on the bus including adding them back
- * if the connection is closed and opens again. Note that subscriptions on unique names are never
- * added back. Specifically, all subscriptions on unique names are removed when the connection is
- * closed so @user_data_free_func may be invoked at any time.
+ * Subscribes to signals on @connection and invokes @callback with the
+ * contents of the signal whenever it is received.
  *
- * It is considered a programming error to use this function if @connection is not open.
+ * It is considered a programming error to use this function if
+ * @connection has been disconnected.
  *
  * Note that if @sender is not <literal>org.freedesktop.DBus</literal> (for listening to signals from the
  * message bus daemon), then it needs to be a unique bus name or %NULL (for listening to signals from any
  * name) - you cannot pass a name like <literal>com.example.MyApp</literal>.
- * Use #GBusNameWatcher to find the unique name for the owner of the name you are interested in. Also note
+ * Use e.g. g_bus_watch_name() to find the unique name for the owner of the name you are interested in. Also note
  * that this function does not remove a subscription if @sender vanishes from the bus. You have to manually
  * call g_dbus_connection_signal_unsubscribe() to remove a subscription.
  *
@@ -2202,7 +2273,7 @@ g_dbus_connection_signal_subscribe (GDBusConnection     *connection,
   guint subscription_id;
 
   g_return_val_if_fail (G_IS_DBUS_CONNECTION (connection), 0);
-  g_return_val_if_fail (g_dbus_connection_get_is_open (connection), 0);
+  g_return_val_if_fail (!g_dbus_connection_get_is_disconnected (connection), 0);
   g_return_val_if_fail (callback != NULL, 0);
 
   subscriber = g_new0 (CSignalSubscriber, 1);

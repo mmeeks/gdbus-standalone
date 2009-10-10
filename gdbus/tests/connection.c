@@ -39,153 +39,57 @@ test_connection_life_cycle (void)
 {
   GDBusConnection *c;
   GDBusConnection *c2;
+  GError *error;
+
+  error = NULL;
 
   /**
    * Check for correct behavior when no bus is present
    *
    */
-  c = g_dbus_connection_bus_get (G_BUS_TYPE_SESSION);
-  g_dbus_connection_set_exit_on_close (c, FALSE);
-  g_assert (!g_dbus_connection_get_is_open (c));
-  g_assert (!g_dbus_connection_get_is_initialized (c));
-  _g_assert_property_notify (c, "is-initialized");
-  g_assert (!g_dbus_connection_get_is_open (c));
-  g_assert ( g_dbus_connection_get_is_initialized (c));
-  g_object_unref (c);
+  c = g_dbus_connection_bus_get_sync (G_BUS_TYPE_SESSION, NULL, &error);
+  g_assert_error (error, G_DBUS_ERROR, G_DBUS_ERROR_FILE_NOT_FOUND);
+  g_assert (c == NULL);
+  g_error_free (error);
+  error = NULL;
 
   /**
    *  Check for correct behavior when a bus is present
-   *
-   *  1. Check #GObject::notify::is-initialized is emitted
-   *  2. Check #GObject::notify::is-open is emitted
-   *  3. Check #GDBusConnection::opened is emitted
    */
   session_bus_up ();
   /* case 1 */
-  c = g_dbus_connection_bus_get (G_BUS_TYPE_SESSION);
-  g_dbus_connection_set_exit_on_close (c, FALSE);
-  g_assert (!g_dbus_connection_get_is_open (c));
-  g_assert (!g_dbus_connection_get_is_initialized (c));
-  _g_assert_property_notify (c, "is-initialized");
-  g_assert ( g_dbus_connection_get_is_open (c));
-  g_assert ( g_dbus_connection_get_is_initialized (c));
-  g_object_unref (c);
-  /* case 2 */
-  c = g_dbus_connection_bus_get (G_BUS_TYPE_SESSION);
-  g_dbus_connection_set_exit_on_close (c, FALSE);
-  g_assert (!g_dbus_connection_get_is_open (c));
-  g_assert (!g_dbus_connection_get_is_initialized (c));
-  _g_assert_property_notify (c, "is-open");
-  g_assert ( g_dbus_connection_get_is_open (c));
-  g_assert ( g_dbus_connection_get_is_initialized (c));
-  g_object_unref (c);
-  /* case 3 */
-  c = g_dbus_connection_bus_get (G_BUS_TYPE_SESSION);
-  g_dbus_connection_set_exit_on_close (c, FALSE);
-  g_assert (!g_dbus_connection_get_is_open (c));
-  g_assert (!g_dbus_connection_get_is_initialized (c));
-  _g_assert_signal_received (c, "opened");
-  g_assert ( g_dbus_connection_get_is_open (c));
-  g_assert ( g_dbus_connection_get_is_initialized (c));
-  g_object_unref (c);
-
-  session_bus_down ();
-
-  /**
-   *  Check for correct behavior when the bus goes away
-   *
-   *  1. Check #GObject::notify::is-open is emitted
-   *  2. Check #GDBusConnection::closed is emitted
-   */
-  /* case 1 */
-  session_bus_up ();
-  c = g_dbus_connection_bus_get (G_BUS_TYPE_SESSION);
-  g_dbus_connection_set_exit_on_close (c, FALSE);
-  g_assert (!g_dbus_connection_get_is_open (c));
-  g_assert (!g_dbus_connection_get_is_initialized (c));
-  _g_assert_property_notify (c, "is-initialized");
-  g_assert ( g_dbus_connection_get_is_open (c));
-  g_assert ( g_dbus_connection_get_is_initialized (c));
-  session_bus_down ();
-  _g_assert_property_notify (c, "is-open");
-  g_assert (!g_dbus_connection_get_is_open (c));
-  g_object_unref (c);
-  /* case 2 */
-  session_bus_up ();
-  c = g_dbus_connection_bus_get (G_BUS_TYPE_SESSION);
-  g_dbus_connection_set_exit_on_close (c, FALSE);
-  g_assert (!g_dbus_connection_get_is_open (c));
-  g_assert (!g_dbus_connection_get_is_initialized (c));
-  _g_assert_property_notify (c, "is-initialized");
-  g_assert ( g_dbus_connection_get_is_open (c));
-  g_assert ( g_dbus_connection_get_is_initialized (c));
-  session_bus_down ();
-  _g_assert_signal_received (c, "closed");
-  g_assert (!g_dbus_connection_get_is_open (c));
-  g_object_unref (c);
-
-  /**
-   * Check that reconnection logic works
-   *
-   *  1. Check #GObject::notify::is-open is emitted
-   *  2. Check #GDBusConnection::closed and #GDBusConnection::opened signals are emitted
-   */
-  /* case 1 */
-  session_bus_up ();
-  c = g_dbus_connection_bus_get (G_BUS_TYPE_SESSION);
-  g_dbus_connection_set_exit_on_close (c, FALSE);
-  g_assert (!g_dbus_connection_get_is_open (c));
-  g_assert (!g_dbus_connection_get_is_initialized (c));
-  _g_assert_property_notify (c, "is-initialized");
-  g_assert ( g_dbus_connection_get_is_open (c));
-  g_assert ( g_dbus_connection_get_is_initialized (c));
-  session_bus_down ();
-  _g_assert_property_notify (c, "is-open");
-  g_assert (!g_dbus_connection_get_is_open (c));
-  session_bus_up ();
-  _g_assert_property_notify (c, "is-open");
-  g_assert ( g_dbus_connection_get_is_open (c));
-  session_bus_down ();
-  _g_assert_property_notify (c, "is-open");
-  g_assert (!g_dbus_connection_get_is_open (c));
-  g_object_unref (c);
-  /* case 2 */
-  session_bus_up ();
-  c = g_dbus_connection_bus_get (G_BUS_TYPE_SESSION);
-  g_dbus_connection_set_exit_on_close (c, FALSE);
-  g_assert (!g_dbus_connection_get_is_open (c));
-  g_assert (!g_dbus_connection_get_is_initialized (c));
-  _g_assert_property_notify (c, "is-initialized");
-  g_assert ( g_dbus_connection_get_is_open (c));
-  g_assert ( g_dbus_connection_get_is_initialized (c));
-  session_bus_down ();
-  _g_assert_signal_received (c, "closed");
-  g_assert (!g_dbus_connection_get_is_open (c));
-  session_bus_up ();
-  _g_assert_signal_received (c, "opened");
-  g_assert ( g_dbus_connection_get_is_open (c));
-  session_bus_down ();
-  _g_assert_signal_received (c, "closed");
-  g_assert (!g_dbus_connection_get_is_open (c));
-  g_object_unref (c);
+  c = g_dbus_connection_bus_get_sync (G_BUS_TYPE_SESSION, NULL, &error);
+  g_assert_no_error (error);
+  g_assert (c != NULL);
+  g_assert (!g_dbus_connection_get_is_disconnected (c));
 
   /**
    * Check that singleton handling work
    */
-  c = g_dbus_connection_bus_get (G_BUS_TYPE_SESSION);
-  c2 = g_dbus_connection_bus_get (G_BUS_TYPE_SESSION);
+  c2 = g_dbus_connection_bus_get_sync (G_BUS_TYPE_SESSION, NULL, &error);
+  g_assert_no_error (error);
+  g_assert (c2 != NULL);
   g_assert (c == c2);
-  g_object_unref (c);
   g_object_unref (c2);
 
   /**
    * Check that private connections work
    */
-  c = g_dbus_connection_bus_get (G_BUS_TYPE_SESSION);
-  c2 = g_dbus_connection_bus_get_private (G_BUS_TYPE_SESSION);
+  c2 = g_dbus_connection_bus_get_private_sync (G_BUS_TYPE_SESSION, NULL, &error);
+  g_assert_no_error (error);
+  g_assert (c2 != NULL);
   g_assert (c != c2);
-  g_object_unref (c);
   g_object_unref (c2);
+
+  /**
+   *  Check for correct behavior when the bus goes away
+   *
+   */
+  g_dbus_connection_set_exit_on_disconnect (c, FALSE);
+  session_bus_down ();
+  _g_assert_signal_received (c, "disconnected");
+  g_assert (g_dbus_connection_get_is_disconnected (c));
+  g_object_unref (c);
 }
 
 /* ---------------------------------------------------------------------------------------------------- */
@@ -193,9 +97,9 @@ test_connection_life_cycle (void)
 /* ---------------------------------------------------------------------------------------------------- */
 
 static void
-msg_cb_expect_error (GDBusConnection *connection,
-                     GAsyncResult    *res,
-                     gpointer         user_data)
+msg_cb_expect_error_disconnected (GDBusConnection *connection,
+                                  GAsyncResult    *res,
+                                  gpointer         user_data)
 {
   GError *error;
   DBusMessage *reply;
@@ -204,9 +108,37 @@ msg_cb_expect_error (GDBusConnection *connection,
   reply = g_dbus_connection_send_dbus_1_message_with_reply_finish (connection,
                                                                    res,
                                                                    &error);
-  g_assert_error (error, G_DBUS_ERROR, G_DBUS_ERROR_FAILED);
+  g_assert_error (error, G_DBUS_ERROR, G_DBUS_ERROR_DISCONNECTED);
   g_error_free (error);
   g_assert (reply == NULL);
+
+  g_main_loop_quit (loop);
+}
+
+static void
+msg_cb_expect_error_unknown_method (GDBusConnection *connection,
+                                    GAsyncResult    *res,
+                                    gpointer         user_data)
+{
+  GError *error;
+  DBusMessage *reply;
+  DBusError dbus_error;
+
+  error = NULL;
+  reply = g_dbus_connection_send_dbus_1_message_with_reply_finish (connection,
+                                                                   res,
+                                                                   &error);
+  g_assert_no_error (error);
+  g_assert (reply != NULL);
+
+  dbus_error_init (&dbus_error);
+  g_assert (dbus_set_error_from_message (&dbus_error, reply));
+  dbus_message_unref (reply);
+
+  g_dbus_error_set_dbus_error (&error, &dbus_error, NULL, NULL);
+  dbus_error_free (&dbus_error);
+  g_assert_error (error, G_DBUS_ERROR, G_DBUS_ERROR_UNKNOWN_METHOD);
+  g_error_free (error);
 
   g_main_loop_quit (loop);
 }
@@ -256,14 +188,15 @@ test_connection_send (void)
 {
   GDBusConnection *c;
   DBusMessage *m;
+  DBusMessage *m2;
   GCancellable *ca;
 
+  session_bus_up ();
+
   /* First, get an unopened connection */
-  c = g_dbus_connection_bus_get (G_BUS_TYPE_SESSION);
-  g_assert (!g_dbus_connection_get_is_open (c));
-  _g_assert_property_notify (c, "is-initialized");
-  g_assert (!g_dbus_connection_get_is_open (c));
-  g_assert ( g_dbus_connection_get_is_initialized (c));
+  c = g_dbus_connection_bus_get_sync (G_BUS_TYPE_SESSION, NULL, NULL);
+  g_assert (c != NULL);
+  g_assert (!g_dbus_connection_get_is_disconnected (c));
 
   /* Use the GetId() method on the message bus for testing */
   m = dbus_message_new_method_call (DBUS_SERVICE_DBUS,
@@ -271,16 +204,11 @@ test_connection_send (void)
                                     DBUS_INTERFACE_DBUS,
                                     "GetId");
 
-  /**
-   *  Check we get an error when sending messages on an unopened connection.
-   */
-  g_dbus_connection_send_dbus_1_message_with_reply (c,
-                                                    m,
-                                                    -1,
-                                                    NULL,
-                                                    (GAsyncReadyCallback) msg_cb_expect_error,
-                                                    NULL);
-  g_main_loop_run (loop);
+  /* Non-existant method on the message bus for testing */
+  m2 = dbus_message_new_method_call (DBUS_SERVICE_DBUS,
+                                     DBUS_PATH_DBUS,
+                                     DBUS_INTERFACE_DBUS,
+                                     "NonExistantMethod");
 
   /**
    * Check that we never actually send a message if the GCancellable is already cancelled - i.e.
@@ -298,11 +226,6 @@ test_connection_send (void)
   g_main_loop_run (loop);
   g_object_unref (ca);
 
-  /* now bring up the bus and wait until the connection is open */
-  session_bus_up ();
-  _g_assert_signal_received (c, "opened");
-  g_assert (g_dbus_connection_get_is_open (c));
-
   /**
    * Check that we get a reply to the GetId() method call.
    */
@@ -311,6 +234,17 @@ test_connection_send (void)
                                                     -1,
                                                     NULL,
                                                     (GAsyncReadyCallback) msg_cb_expect_success,
+                                                    NULL);
+  g_main_loop_run (loop);
+
+  /**
+   * Check that we get an error reply to the NonExistantMethod() method call.
+   */
+  g_dbus_connection_send_dbus_1_message_with_reply (c,
+                                                    m2,
+                                                    -1,
+                                                    NULL,
+                                                    (GAsyncReadyCallback) msg_cb_expect_error_unknown_method,
                                                     NULL);
   g_main_loop_run (loop);
 
@@ -328,10 +262,25 @@ test_connection_send (void)
   g_main_loop_run (loop);
   g_object_unref (ca);
 
-  /* clean up */
-  dbus_message_unref (m);
-  g_object_unref (c);
+  /**
+   * Check that we get an error when sending to a connection that is disconnected.
+   */
+  g_dbus_connection_set_exit_on_disconnect (c, FALSE);
   session_bus_down ();
+  _g_assert_signal_received (c, "disconnected");
+  g_assert (g_dbus_connection_get_is_disconnected (c));
+
+  g_dbus_connection_send_dbus_1_message_with_reply (c,
+                                                    m,
+                                                    -1,
+                                                    NULL,
+                                                    (GAsyncReadyCallback) msg_cb_expect_error_disconnected,
+                                                    NULL);
+  g_main_loop_run (loop);
+
+  g_object_unref (c);
+  dbus_message_unref (m);
+  dbus_message_unref (m2);
 }
 
 /* ---------------------------------------------------------------------------------------------------- */
@@ -378,16 +327,14 @@ test_connection_signals (void)
    */
   if (g_getenv ("G_DBUS_MONITOR") == NULL)
     {
-      c1 = g_dbus_connection_bus_get (G_BUS_TYPE_SESSION);
-      _g_assert_signal_received (c1, "opened");
-      g_assert (g_dbus_connection_get_is_open (c1));
-      g_assert (g_dbus_connection_get_is_initialized (c1));
+      c1 = g_dbus_connection_bus_get_sync (G_BUS_TYPE_SESSION, NULL, NULL);
+      g_assert (c1 != NULL);
+      g_assert (!g_dbus_connection_get_is_disconnected (c1));
       g_object_unref (c1);
     }
-  c1 = g_dbus_connection_bus_get (G_BUS_TYPE_SESSION);
-  _g_assert_signal_received (c1, "opened");
-  g_assert (g_dbus_connection_get_is_open (c1));
-  g_assert (g_dbus_connection_get_is_initialized (c1));
+  c1 = g_dbus_connection_bus_get_sync (G_BUS_TYPE_SESSION, NULL, NULL);
+  g_assert (c1 != NULL);
+  g_assert (!g_dbus_connection_get_is_disconnected (c1));
   g_assert_cmpstr (g_dbus_connection_get_unique_name (c1), ==, ":1.1");
 
   /**
@@ -436,15 +383,13 @@ test_connection_signals (void)
   /**
    * Bring up two other connections
    */
-  c2 = g_dbus_connection_bus_get_private (G_BUS_TYPE_SESSION);
-  _g_assert_signal_received (c2, "opened");
-  g_assert (g_dbus_connection_get_is_open (c2));
-  g_assert (g_dbus_connection_get_is_initialized (c2));
+  c2 = g_dbus_connection_bus_get_private_sync (G_BUS_TYPE_SESSION, NULL, NULL);
+  g_assert (c2 != NULL);
+  g_assert (!g_dbus_connection_get_is_disconnected (c2));
   g_assert_cmpstr (g_dbus_connection_get_unique_name (c2), ==, ":1.2");
-  c3 = g_dbus_connection_bus_get_private (G_BUS_TYPE_SESSION);
-  _g_assert_signal_received (c3, "opened");
-  g_assert (g_dbus_connection_get_is_open (c3));
-  g_assert (g_dbus_connection_get_is_initialized (c3));
+  c3 = g_dbus_connection_bus_get_private_sync (G_BUS_TYPE_SESSION, NULL, NULL);
+  g_assert (c3 != NULL);
+  g_assert (!g_dbus_connection_get_is_disconnected (c3));
   g_assert_cmpstr (g_dbus_connection_get_unique_name (c3), ==, ":1.3");
 
   /* prepare a signal message */
@@ -481,68 +426,26 @@ test_connection_signals (void)
   g_assert_cmpint (count_name_owner_changed, ==, 2);
 
   /**
-   * Now bring down the session bus and wait for all three connections to close.
-   * Then bring the bus back up and wait for all connections to open.
-   *
-   * Then check that _only_ the rules not matching on sender still works. This tests that we only
-   * readd match rules only when the sender is not specified.
+   * Now bring down the session bus and check we get the :disconnected signal from each connection.
    */
   session_bus_down ();
-  g_dbus_connection_set_exit_on_close (c1, FALSE);
-  g_dbus_connection_set_exit_on_close (c2, FALSE);
-  g_dbus_connection_set_exit_on_close (c3, FALSE);
-  if (g_dbus_connection_get_is_open (c1))
-    _g_assert_signal_received (c1, "closed");
-  if (g_dbus_connection_get_is_open (c2))
-    _g_assert_signal_received (c2, "closed");
-  if (g_dbus_connection_get_is_open (c3))
-    _g_assert_signal_received (c3, "closed");
-  session_bus_up ();
-  if (!g_dbus_connection_get_is_open (c1))
-    _g_assert_signal_received (c1, "opened");
-  if (!g_dbus_connection_get_is_open (c2))
-    _g_assert_signal_received (c2, "opened");
-  if (!g_dbus_connection_get_is_open (c3))
-    _g_assert_signal_received (c3, "opened");
-  /* Make c2 emit "Foo" - now we should catch it only once */
-  count_s1 = 0;
-  count_s2 = 0;
-  g_dbus_connection_send_dbus_1_message (c2, m);
-  while (!(count_s1 == 0 && count_s2 == 1))
-    g_main_loop_run (loop);
-  g_assert_cmpint (count_s1, ==, 0);
-  g_assert_cmpint (count_s2, ==, 1);
-  /* Make c3 emit "Foo" - now we should catch it only once */
-  g_dbus_connection_send_dbus_1_message (c3, m);
-  while (!(count_s1 == 0 && count_s2 == 2))
-    g_main_loop_run (loop);
-  g_assert_cmpint (count_s1, ==, 0);
-  g_assert_cmpint (count_s2, ==, 2);
-  /* Tool around in the mainloop to avoid race conditions
-   */
-  g_timeout_add (500, test_connection_signal_quit_mainloop, NULL);
-  g_main_loop_run (loop);
-  g_assert_cmpint (count_s1, ==, 0);
-  g_assert_cmpint (count_s2, ==, 2);
-  /**
-   * Now bring down both c2 and c3, sleep for a while, and check that count_name_owner_changed is
-   * at least 4 (depending on inherent races (c1 may reconnect before or after c2 and c3 etc.) it may
-   * be larger than 4)
-   *
-   * This demonstrates that the NameOwnerChanged rule was readded when c1 got back online.
-   */
-  g_object_unref (c2);
-  g_object_unref (c3);
-  g_timeout_add (500, test_connection_signal_quit_mainloop, NULL);
-  g_main_loop_run (loop);
-  g_assert_cmpint (count_name_owner_changed, >=, 4);
+  g_dbus_connection_set_exit_on_disconnect (c1, FALSE);
+  g_dbus_connection_set_exit_on_disconnect (c2, FALSE);
+  g_dbus_connection_set_exit_on_disconnect (c3, FALSE);
+  if (!g_dbus_connection_get_is_disconnected (c1))
+    _g_assert_signal_received (c1, "disconnected");
+  if (!g_dbus_connection_get_is_disconnected (c2))
+    _g_assert_signal_received (c2, "disconnected");
+  if (!g_dbus_connection_get_is_disconnected (c3))
+    _g_assert_signal_received (c3, "disconnected");
 
   dbus_message_unref (m);
   g_dbus_connection_dbus_1_signal_unsubscribe (c1, s1);
   g_dbus_connection_dbus_1_signal_unsubscribe (c1, s2);
   g_dbus_connection_dbus_1_signal_unsubscribe (c1, s3);
   g_object_unref (c1);
-  session_bus_down ();
+  g_object_unref (c2);
+  g_object_unref (c3);
 }
 
 /* ---------------------------------------------------------------------------------------------------- */

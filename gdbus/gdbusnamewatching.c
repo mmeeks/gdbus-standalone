@@ -26,10 +26,12 @@
 
 #include <glib/gi18n.h>
 
-#include "gbusnamewatcher.h"
 #include "gdbusnamewatching.h"
 #include "gdbuserror.h"
 #include "gdbusprivate.h"
+#include "gdbusconnection.h"
+#include "gdbusconnection-lowlevel.h"
+
 
 #include "gdbusalias.h"
 
@@ -59,20 +61,20 @@ typedef struct
 {
   volatile gint             ref_count;
   guint                     id;
+  gchar                    *name;
+  gchar                    *name_owner;
   GBusNameAppearedCallback  name_appeared_handler;
   GBusNameVanishedCallback  name_vanished_handler;
   gpointer                  user_data;
-  GBusNameWatcher          *watcher;
 
-  gulong                    name_appeared_signal_handler_id;
-  gulong                    name_vanished_signal_handler_id;
+  GDBusConnection          *connection;
+  gulong                    disconnected_signal_handler_id;
+  guint                     name_owner_changed_subscription_id;
 
   PreviousCall              previous_call;
 
-  gulong                    is_initialized_notify_id;
-  guint                     idle_id;
-
   gboolean                  cancelled;
+  gboolean                  initialized;
 } Client;
 
 static guint next_global_id = 1;
@@ -90,137 +92,240 @@ client_unref (Client *client)
 {
   if (g_atomic_int_dec_and_test (&client->ref_count))
     {
-      if (client->name_appeared_signal_handler_id > 0)
-        g_signal_handler_disconnect (client->watcher, client->name_appeared_signal_handler_id);
-      if (client->name_vanished_signal_handler_id > 0)
-        g_signal_handler_disconnect (client->watcher, client->name_vanished_signal_handler_id);
-      if (client->is_initialized_notify_id > 0)
-        g_signal_handler_disconnect (client->watcher, client->is_initialized_notify_id);
-      if (client->idle_id > 0)
-        g_source_remove (client->idle_id);
-      g_object_unref (client->watcher);
+      if (client->connection != NULL)
+        {
+          if (client->name_owner_changed_subscription_id > 0)
+            g_dbus_connection_dbus_1_signal_unsubscribe (client->connection, client->name_owner_changed_subscription_id);
+          if (client->disconnected_signal_handler_id > 0)
+            g_signal_handler_disconnect (client->connection, client->disconnected_signal_handler_id);
+          g_object_unref (client->connection);
+        }
+      g_free (client->name);
+      g_free (client->name_owner);
       g_free (client);
     }
 }
 
+/* ---------------------------------------------------------------------------------------------------- */
+
 static void
-on_name_appeared (GBusNameWatcher *watcher,
-                  gpointer         user_data)
+call_appeared_handler (Client *client)
 {
-  Client *client = user_data;
-  g_warn_if_fail (client->previous_call == PREVIOUS_CALL_NONE || client->previous_call == PREVIOUS_CALL_VANISHED);
-  client->previous_call = PREVIOUS_CALL_APPEARED;
-  if (client->name_appeared_handler != NULL)
+  if (client->previous_call != PREVIOUS_CALL_APPEARED)
     {
-      client->name_appeared_handler (g_bus_name_watcher_get_connection (client->watcher),
-                                     g_bus_name_watcher_get_name (client->watcher),
-                                     g_bus_name_watcher_get_name_owner (client->watcher),
-                                     client->user_data);
-    }
-}
-
-static void
-on_name_vanished (GBusNameWatcher *watcher,
-                  gpointer         user_data)
-{
-  Client *client = user_data;
-  g_warn_if_fail (client->previous_call == PREVIOUS_CALL_NONE || client->previous_call == PREVIOUS_CALL_APPEARED);
-  client->previous_call = PREVIOUS_CALL_VANISHED;
-  if (client->name_vanished_handler != NULL)
-    {
-      client->name_vanished_handler (g_bus_name_watcher_get_connection (client->watcher),
-                                     g_bus_name_watcher_get_name (client->watcher),
-                                     client->user_data);
-    }
-}
-
-/* must only be called with lock held */
-static void
-client_connect_signals (Client *client)
-{
-  client->name_appeared_signal_handler_id = g_signal_connect (client->watcher,
-                                                              "name-appeared",
-                                                              G_CALLBACK (on_name_appeared),
-                                                              client);
-  client->name_vanished_signal_handler_id = g_signal_connect (client->watcher,
-                                                              "name-vanished",
-                                                              G_CALLBACK (on_name_vanished),
-                                                              client);
-}
-
-/* must be called without lock held */
-static void
-client_do_initial_callbacks (Client *client)
-{
-  const gchar *name_owner;
-
-  name_owner = g_bus_name_watcher_get_name_owner (client->watcher);
-  if (name_owner != NULL)
-    {
-      g_warn_if_fail (client->previous_call == PREVIOUS_CALL_NONE);
       client->previous_call = PREVIOUS_CALL_APPEARED;
-      if (client->name_appeared_handler != NULL)
+      if (!client->cancelled && client->name_appeared_handler != NULL)
         {
-          client->name_appeared_handler (g_bus_name_watcher_get_connection (client->watcher),
-                                         g_bus_name_watcher_get_name (client->watcher),
-                                         name_owner,
+          client->name_appeared_handler (client->connection,
+                                         client->name,
+                                         client->name_owner,
                                          client->user_data);
         }
+    }
+}
+
+static void
+call_vanished_handler (Client  *client,
+                       gboolean ignore_cancelled)
+{
+  if (client->previous_call != PREVIOUS_CALL_VANISHED)
+    {
+      client->previous_call = PREVIOUS_CALL_VANISHED;
+      if (((!client->cancelled) || ignore_cancelled) && client->name_vanished_handler != NULL)
+        {
+          client->name_vanished_handler (client->connection,
+                                         client->name,
+                                         client->user_data);
+        }
+    }
+}
+
+/* ---------------------------------------------------------------------------------------------------- */
+
+static void
+on_connection_disconnected (GDBusConnection *connection,
+                            gpointer         user_data)
+{
+  Client *client = user_data;
+
+  if (client->name_owner_changed_subscription_id > 0)
+    g_dbus_connection_dbus_1_signal_unsubscribe (client->connection, client->name_owner_changed_subscription_id);
+  if (client->disconnected_signal_handler_id > 0)
+    g_signal_handler_disconnect (client->connection, client->disconnected_signal_handler_id);
+  g_object_unref (client->connection);
+  client->disconnected_signal_handler_id = 0;
+  client->name_owner_changed_subscription_id = 0;
+  client->connection = NULL;
+
+  call_vanished_handler (client, FALSE);
+}
+
+/* ---------------------------------------------------------------------------------------------------- */
+
+static void
+on_name_owner_changed (GDBusConnection *connection,
+                       DBusMessage     *message,
+                       gpointer         user_data)
+{
+  Client *client = user_data;
+  const gchar *name;
+  const gchar *old_owner;
+  const gchar *new_owner;
+  DBusError dbus_error;
+
+  if (!client->initialized)
+    goto out;
+
+  /* extract parameters */
+  dbus_error_init (&dbus_error);
+  if (!dbus_message_get_args (message,
+                              &dbus_error,
+                              DBUS_TYPE_STRING, &name,
+                              DBUS_TYPE_STRING, &old_owner,
+                              DBUS_TYPE_STRING, &new_owner,
+                              DBUS_TYPE_INVALID))
+    {
+      g_warning ("Error extracting parameters for NameOwnerChanged signal: %s: %s",
+                 dbus_error.name, dbus_error.message);
+      dbus_error_free (&dbus_error);
+      goto out;
+    }
+
+  /* we only care about a specific name */
+  if (g_strcmp0 (name, client->name) != 0)
+    goto out;
+
+  if ((old_owner != NULL && strlen (old_owner) > 0) && client->name_owner != NULL)
+    {
+      g_free (client->name_owner);
+      client->name_owner = NULL;
+      call_vanished_handler (client, FALSE);
+    }
+
+  if (new_owner != NULL && strlen (new_owner) > 0)
+    {
+      g_warn_if_fail (client->name_owner == NULL);
+      g_free (client->name_owner);
+      client->name_owner = g_strdup (new_owner);
+      call_appeared_handler (client);
+    }
+
+ out:
+  ;
+}
+
+/* ---------------------------------------------------------------------------------------------------- */
+
+static void
+get_name_owner_cb (GObject      *source_object,
+                   GAsyncResult *res,
+                   gpointer      user_data)
+{
+  Client *client = user_data;
+  DBusMessage *reply;
+  DBusError dbus_error;
+  const char *name_owner;
+
+  name_owner = NULL;
+  reply = NULL;
+
+  reply = g_dbus_connection_send_dbus_1_message_with_reply_finish (client->connection,
+                                                                   res,
+                                                                   NULL);
+  dbus_error_init (&dbus_error);
+  if (!dbus_set_error_from_message (&dbus_error, reply))
+    {
+      dbus_message_get_args (reply,
+                             &dbus_error,
+                             DBUS_TYPE_STRING, &name_owner,
+                             DBUS_TYPE_INVALID);
+    }
+  if (dbus_error_is_set (&dbus_error))
+    {
+      dbus_error_free (&dbus_error);
+    }
+
+  if (name_owner != NULL)
+    {
+      g_warn_if_fail (client->name_owner == NULL);
+      client->name_owner = g_strdup (name_owner);
+      call_appeared_handler (client);
     }
   else
     {
-      g_warn_if_fail (client->previous_call == PREVIOUS_CALL_NONE);
-      client->previous_call = PREVIOUS_CALL_VANISHED;
-      if (client->name_vanished_handler != NULL)
-        {
-          client->name_vanished_handler (g_bus_name_watcher_get_connection (client->watcher),
-                                         g_bus_name_watcher_get_name (client->watcher),
-                                         client->user_data);
-        }
+      call_vanished_handler (client, FALSE);
     }
+
+  client->initialized = TRUE;
+
+  if (reply != NULL)
+    dbus_message_unref (reply);
+  client_unref (client);
 }
+
+/* ---------------------------------------------------------------------------------------------------- */
 
 static void
-on_is_initialized_notify_cb (GBusNameWatcher *watcher,
-                             GParamSpec      *pspec,
-                             gpointer         user_data)
+has_connection (Client *client)
 {
-  Client *client = user_data;
-  G_LOCK (lock);
-  /* disconnect from signal */
-  if (client->cancelled)
-    goto out;
-  g_signal_handler_disconnect (client->watcher, client->is_initialized_notify_id);
-  client->is_initialized_notify_id = 0;
-  client_connect_signals (client);
-  G_UNLOCK (lock);
-  client_do_initial_callbacks (client);
-  client_unref (client);
-  return;
+  DBusMessage *message;
 
- out:
-  client_unref (client);
-  G_UNLOCK (lock);
+  /* listen for disconnection */
+  client->disconnected_signal_handler_id = g_signal_connect (client->connection,
+                                                             "disconnected",
+                                                             G_CALLBACK (on_connection_disconnected),
+                                                             client);
+
+  /* start listening to NameOwnerChanged messages immediately */
+  client->name_owner_changed_subscription_id =
+    g_dbus_connection_dbus_1_signal_subscribe (client->connection,
+                                               DBUS_SERVICE_DBUS,
+                                               DBUS_INTERFACE_DBUS,
+                                               "NameOwnerChanged",
+                                               DBUS_PATH_DBUS,
+                                               client->name,
+                                               on_name_owner_changed,
+                                               client,
+                                               NULL);
+
+  /* check owner */
+  if ((message = dbus_message_new_method_call (DBUS_SERVICE_DBUS,
+                                               DBUS_PATH_DBUS,
+                                               DBUS_INTERFACE_DBUS,
+                                               "GetNameOwner")) == NULL)
+    _g_dbus_oom ();
+  if (!dbus_message_append_args (message,
+                                 DBUS_TYPE_STRING, &client->name,
+                                 DBUS_TYPE_INVALID))
+    _g_dbus_oom ();
+  g_dbus_connection_send_dbus_1_message_with_reply (client->connection,
+                                                    message,
+                                                    -1,
+                                                    NULL,
+                                                    (GAsyncReadyCallback) get_name_owner_cb,
+                                                    client_ref (client));
+  dbus_message_unref (message);
 }
 
-static gboolean
-do_callback_in_idle (gpointer user_data)
+
+static void
+connection_get_cb (GObject      *source_object,
+                   GAsyncResult *res,
+                   gpointer      user_data)
 {
   Client *client = user_data;
-  G_LOCK (lock);
-  client->idle_id = 0;
-  if (client->cancelled)
-    goto out;
-  client_connect_signals (client);
-  G_UNLOCK (lock);
-  client_do_initial_callbacks (client);
-  client_unref (client);
-  return FALSE;
+
+  client->connection = g_dbus_connection_bus_get_finish (res, NULL);
+  if (client->connection == NULL)
+    {
+      call_vanished_handler (client, FALSE);
+      goto out;
+    }
+
+  has_connection (client);
 
  out:
   client_unref (client);
-  G_UNLOCK (lock);
-  return FALSE;
 }
 
 /* ---------------------------------------------------------------------------------------------------- */
@@ -244,11 +349,9 @@ do_callback_in_idle (gpointer user_data)
  *
  * If the name vanishes or appears (for example the application owning
  * the name could restart), the handlers are also invoked. If the
- * #GDBusConnection that is used for watching the name is closed, then
+ * #GDBusConnection that is used for watching the name disconnects, then
  * @name_vanished_handler is invoked since it is no longer
- * possible to access the name. Similarly, if the connection is opened
- * again, @name_appeared_handler is invoked if and when it turns
- * out someone owns the name.
+ * possible to access the name.
  *
  * Another guarantee is that invocations of @name_appeared_handler
  * and @name_vanished_handler are guaranteed to alternate; that
@@ -282,26 +385,12 @@ g_bus_watch_name (GBusType                  bus_type,
   G_LOCK (lock);
 
   client = g_new0 (Client, 1);
-  client->id = next_global_id++; /* TODO: uh oh, handle overflow */
   client->ref_count = 1;
+  client->id = next_global_id++; /* TODO: uh oh, handle overflow */
+  client->name = g_strdup (name);
   client->name_appeared_handler = name_appeared_handler;
   client->name_vanished_handler = name_vanished_handler;
   client->user_data = user_data;
-  client->watcher = g_bus_name_watcher_new (bus_type, name);
-  if (!g_bus_name_watcher_get_is_initialized (client->watcher))
-    {
-      /* wait for :is_initialized to change before reporting anything */
-      client->is_initialized_notify_id = g_signal_connect (client->watcher,
-                                                           "notify::is-initialized",
-                                                           G_CALLBACK (on_is_initialized_notify_cb),
-                                                           client_ref (client));
-    }
-  else
-    {
-      /* is already initialized, do callback in idle */
-      client->idle_id = g_idle_add ((GSourceFunc) do_callback_in_idle,
-                                    client);
-    }
 
   if (map_id_to_client == NULL)
     {
@@ -310,6 +399,11 @@ g_bus_watch_name (GBusType                  bus_type,
   g_hash_table_insert (map_id_to_client,
                        GUINT_TO_POINTER (client->id),
                        client);
+
+  g_dbus_connection_bus_get (bus_type,
+                             NULL,
+                             connection_get_cb,
+                             client_ref (client));
 
   G_UNLOCK (lock);
 
@@ -351,13 +445,7 @@ g_bus_unwatch_name (guint watcher_id)
   /* do callback without holding lock */
   if (client != NULL)
     {
-      if (client->previous_call == PREVIOUS_CALL_APPEARED)
-        {
-          if (client->name_vanished_handler != NULL)
-            client->name_vanished_handler (g_bus_name_watcher_get_connection (client->watcher),
-                                           g_bus_name_watcher_get_name (client->watcher),
-                                           client->user_data);
-        }
+      call_vanished_handler (client, TRUE);
       client_unref (client);
     }
 }

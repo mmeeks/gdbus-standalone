@@ -26,7 +26,7 @@
 
 #include <glib/gi18n.h>
 
-#include "gbusnamewatcher.h"
+#include "gdbusnamewatching.h"
 #include "gdbusproxywatching.h"
 #include "gdbuserror.h"
 #include "gdbusprivate.h"

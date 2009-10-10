@@ -32,8 +32,6 @@
 G_BEGIN_DECLS
 
 typedef struct _GDBusConnection       GDBusConnection;
-typedef struct _GBusNameOwner         GBusNameOwner;
-typedef struct _GBusNameWatcher       GBusNameWatcher;
 typedef struct _GDBusProxy            GDBusProxy;
 typedef struct _GDBusStructure        GDBusStructure;
 typedef struct _GDBusVariant          GDBusVariant;
