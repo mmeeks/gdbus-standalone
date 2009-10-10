@@ -233,6 +233,20 @@ typedef enum
   G_DBUS_ERROR_OBJECT_PATH_IN_USE,               /*< nick=org.freedesktop.DBus.Error.ObjectPathInUse >*/
 } GDBusError;
 
+/**
+ * GDBusPropertyInfoFlags:
+ * @G_DBUS_PROPERTY_INFO_FLAGS_NONE: No flags set.
+ * @G_DBUS_PROPERTY_INFO_FLAGS_READABLE: Property is readable.
+ * @G_DBUS_PROPERTY_INFO_FLAGS_WRITABLE: Property is writable.
+ *
+ * Flags describing the access control of a D-Bus property.
+ */
+typedef enum
+{
+  G_DBUS_PROPERTY_INFO_FLAGS_NONE = 0,
+  G_DBUS_PROPERTY_INFO_FLAGS_READABLE = (1<<0),
+  G_DBUS_PROPERTY_INFO_FLAGS_WRITABLE = (1<<1),
+} GDBusPropertyInfoFlags;
 
 G_END_DECLS
 

@@ -25,6 +25,7 @@
         <xi:include href="xml/gdbusnameowning.xml"/>
         <xi:include href="xml/gdbusnamewatching.xml"/>
         <xi:include href="xml/gdbusproxywatching.xml"/>
+        <xi:include href="xml/gdbusintrospection.xml"/>
     </chapter>
     <chapter id="cmapping">
         <title>C Object Mapping</title>

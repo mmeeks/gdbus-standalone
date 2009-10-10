@@ -43,6 +43,7 @@ gdbus_headers =				\
 	gdbusproxy.h			\
 	gdbusstructure.h		\
 	gdbusvariant.h			\
+	gdbusintrospection.h		\
 	$(NULL)
 
 libgdbus_standalone_la_SOURCES =					\
@@ -65,6 +66,7 @@ libgdbus_standalone_la_SOURCES =					\
 	gdbusstructure.h		gdbusstructure.c		\
 	gdbusvariant.h			gdbusvariant.c			\
 	gdbusprivate.h			gdbusprivate.c			\
+	gdbusintrospection.h		gdbusintrospection.c		\
 	gdbusalias.h 							\
 	gdbusaliasdef.c							\
 	$(NULL)

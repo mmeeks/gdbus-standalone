@@ -22,6 +22,7 @@ progs_ldadd     =                                       \
 TEST_PROGS += connection
 TEST_PROGS += names
 TEST_PROGS += proxy
+TEST_PROGS += introspection
 
 connection_SOURCES = connection.c sessionbus.c sessionbus.h tests.h tests.c
 connection_LDADD = $(progs_ldadd)
@@ -31,3 +32,6 @@ names_LDADD = $(progs_ldadd)
 
 proxy_SOURCES = proxy.c sessionbus.c sessionbus.h tests.h tests.c
 proxy_LDADD = $(progs_ldadd)
+
+introspection_SOURCES = introspection.c sessionbus.c sessionbus.h tests.h tests.c
+introspection_LDADD = $(progs_ldadd)

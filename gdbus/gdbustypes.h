@@ -36,6 +36,14 @@ typedef struct _GDBusProxy            GDBusProxy;
 typedef struct _GDBusStructure        GDBusStructure;
 typedef struct _GDBusVariant          GDBusVariant;
 
+typedef struct _GDBusAnnotationInfo   GDBusAnnotationInfo;
+typedef struct _GDBusArgInfo          GDBusArgInfo;
+typedef struct _GDBusMethodInfo       GDBusMethodInfo;
+typedef struct _GDBusSignalInfo       GDBusSignalInfo;
+typedef struct _GDBusPropertyInfo     GDBusPropertyInfo;
+typedef struct _GDBusInterfaceInfo    GDBusInterfaceInfo;
+typedef struct _GDBusNodeInfo         GDBusNodeInfo;
+
 G_END_DECLS
 
 #endif /* __G_DBUS_TYPES_H__ */
