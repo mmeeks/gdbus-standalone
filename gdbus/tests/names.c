@@ -27,9 +27,8 @@
 #define G_DBUS_I_UNDERSTAND_THAT_ABI_AND_API_IS_UNSTABLE
 #include <gdbus/gdbus-lowlevel.h>
 
-
 /* all tests rely on a shared mainloop */
-static GMainLoop *loop = NULL;
+static GMainLoop *loop;
 
 /* ---------------------------------------------------------------------------------------------------- */
 /* Test that g_bus_own_name() works correctly */
@@ -37,6 +36,7 @@ static GMainLoop *loop = NULL;
 
 typedef struct
 {
+  GMainLoop *loop;
   gboolean expect_null_connection;
   guint num_acquired;
   guint num_lost;
@@ -587,10 +587,11 @@ int
 main (int   argc,
       char *argv[])
 {
+  gint ret;
+
   g_type_init ();
   g_test_init (&argc, &argv, NULL);
 
-  /* all the tests rely on a shared main loop */
   loop = g_main_loop_new (NULL, FALSE);
 
   /* all the tests use a session bus with a well-known address that we can bring up and down
@@ -602,5 +603,9 @@ main (int   argc,
   g_test_add_func ("/gdbus/bus-own-name", test_bus_own_name);
   g_test_add_func ("/gdbus/bus-watch-name", test_bus_watch_name);
 
-  return g_test_run();
+  ret = g_test_run();
+
+  g_main_loop_unref (loop);
+
+  return ret;
 }

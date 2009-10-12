@@ -1455,6 +1455,7 @@ typedef struct
   gpointer user_data;
   GDestroyNotify user_data_free_func;
   guint id;
+  GMainContext *context;
 } SignalSubscriber;
 
 static void
@@ -1647,8 +1648,11 @@ is_signal_data_for_name_lost_or_acquired (SignalData *signal_data)
  * This function is marked as unstable API. You must include <literal>gdbus/gdbus-lowlevel.h</literal> to use it.
  * </note></para>
  *
- * Subscribes to signals on @connection and invokes @callback with a #DBusMessage whenever the signal
- * is received.
+ * Subscribes to signals on @connection and invokes @callback with a
+ * #DBusMessage whenever the signal is received. Note that @callback
+ * will be invoked in the <link
+ * linkend="g-main-context-push-thread-default">thread-default main
+ * loop</link> of the thread you are calling this method from.
  *
  * It is considered a programming error to use this function if @connection has been disconnected.
  *
@@ -1706,6 +1710,9 @@ g_dbus_connection_dbus_1_signal_subscribe (GDBusConnection     *connection,
   subscriber.user_data = user_data;
   subscriber.user_data_free_func = user_data_free_func;
   subscriber.id = _global_subscriber_id++; /* TODO: overflow etc. */
+  subscriber.context = g_main_context_get_thread_default ();
+  if (subscriber.context != NULL)
+    g_main_context_ref (subscriber.context);
 
   /* see if we've already have this rule */
   signal_data = g_hash_table_lookup (connection->priv->map_rule_to_signal_data, rule);
@@ -1857,6 +1864,8 @@ g_dbus_connection_dbus_1_signal_unsubscribe (GDBusConnection    *connection,
       subscriber = &(g_array_index (subscribers, SignalSubscriber, n));
       if (subscriber->user_data_free_func != NULL)
         subscriber->user_data_free_func (subscriber->user_data);
+      if (subscriber->context != NULL)
+        g_main_context_unref (subscriber->context);
     }
 
   g_array_free (subscribers, TRUE);
@@ -1864,10 +1873,36 @@ g_dbus_connection_dbus_1_signal_unsubscribe (GDBusConnection    *connection,
 
 /* ---------------------------------------------------------------------------------------------------- */
 
+typedef struct
+{
+  GDBusSignalCallback1 callback;
+  gpointer             user_data;
+  DBusMessage         *message;
+  GDBusConnection     *connection;
+} SignalInstance;
+
+static gboolean
+emit_signal_instance_in_idle_cb (gpointer data)
+{
+  SignalInstance *signal_instance = data;
+  signal_instance->callback (signal_instance->connection,
+                             signal_instance->message,
+                             signal_instance->user_data);
+  return FALSE;
+}
+
 static void
-add_callbacks (GPtrArray   *signal_data_array,
-               GArray      *callbacks,
-               DBusMessage *message)
+signal_instance_free (SignalInstance *signal_instance)
+{
+  dbus_message_unref (signal_instance->message);
+  g_object_unref (signal_instance->connection);
+  g_free (signal_instance);
+}
+
+static void
+schedule_callbacks (GDBusConnection *connection,
+                    GPtrArray       *signal_data_array,
+                    DBusMessage     *message)
 {
   guint n, m;
 
@@ -1906,9 +1941,26 @@ add_callbacks (GPtrArray   *signal_data_array,
       for (m = 0; m < signal_data->subscribers->len; m++)
         {
           SignalSubscriber *subscriber;
+          GSource *idle_source;
+          SignalInstance *signal_instance;
+
           subscriber = &(g_array_index (signal_data->subscribers, SignalSubscriber, m));
 
-          g_array_append_val (callbacks, *subscriber);
+          signal_instance = g_new0 (SignalInstance, 1);
+          signal_instance->callback = subscriber->callback;
+          signal_instance->user_data = subscriber->user_data;
+          signal_instance->message = dbus_message_ref (message);
+          signal_instance->connection = g_object_ref (connection);
+
+          /* use higher priority that method_reply to ensure signals are handled by method replies */
+          idle_source = g_idle_source_new ();
+          g_source_set_priority (idle_source, G_PRIORITY_HIGH);
+          g_source_set_callback (idle_source,
+                                 emit_signal_instance_in_idle_cb,
+                                 signal_instance,
+                                 (GDestroyNotify) signal_instance_free);
+          g_source_attach (idle_source, subscriber->context);
+          g_source_unref (idle_source);
         }
     }
 }
@@ -1920,8 +1972,6 @@ distribute_signals (GDBusConnection *connection,
 {
   const gchar *sender;
   GPtrArray *signal_data_array;
-  GArray *callbacks;
-  guint n;
 
   sender = dbus_message_get_sender (message);
   if (sender == NULL)
@@ -1929,35 +1979,19 @@ distribute_signals (GDBusConnection *connection,
 
   G_LOCK (connection_lock);
 
-  /* collect callbacks with lock held, invoke them without holding lock */
-  callbacks = g_array_new (FALSE, FALSE, sizeof (SignalSubscriber));
-
   /* collect subcsribers that match on sender */
   signal_data_array = g_hash_table_lookup (connection->priv->map_sender_to_signal_data_array, sender);
   if (signal_data_array != NULL) {
-    add_callbacks (signal_data_array, callbacks, message);
+    schedule_callbacks (connection, signal_data_array, message);
   }
 
   /* collect subcsribers not matching on sender */
   signal_data_array = g_hash_table_lookup (connection->priv->map_sender_to_signal_data_array, "");
   if (signal_data_array != NULL) {
-    add_callbacks (signal_data_array, callbacks, message);
+    schedule_callbacks (connection, signal_data_array, message);
   }
 
   G_UNLOCK (connection_lock);
-
-  for (n = 0; n < callbacks->len; n++)
-    {
-      SignalSubscriber *subscriber;
-
-      subscriber = &(g_array_index (callbacks, SignalSubscriber, n));
-
-      subscriber->callback (connection,
-                            message,
-                            subscriber->user_data);
-    }
-
-  g_array_free (callbacks, TRUE);
 
 out:
   ;
@@ -2003,6 +2037,8 @@ purge_all_signal_subscriptions (GDBusConnection *connection)
       subscriber = &(g_array_index (subscribers, SignalSubscriber, n));
       if (subscriber->user_data_free_func != NULL)
         subscriber->user_data_free_func (subscriber->user_data);
+      if (subscriber->context != NULL)
+        g_main_context_unref (subscriber->context);
     }
 
   g_array_free (subscribers, TRUE);
@@ -2099,7 +2135,10 @@ free_c_subscriber (CSignalSubscriber *subscriber)
  * @user_data_free_func: Function to free @user_data when subscription is removed or %NULL.
  *
  * Subscribes to signals on @connection and invokes @callback with the
- * contents of the signal whenever it is received.
+ * contents of the signal whenever it is received. Note that @callback
+ * will be invoked in the <link
+ * linkend="g-main-context-push-thread-default">thread-default main
+ * loop</link> of the thread you are calling this method from.
  *
  * It is considered a programming error to use this function if
  * @connection has been disconnected.

@@ -8,6 +8,7 @@ INCLUDES =                      \
 	$(GLIB2_CFLAGS)		\
 	$(GOBJECT2_CFLAGS)	\
 	$(GIO2_CFLAGS)		\
+	$(GTHREAD2_CFLAGS)	\
 	$(DBUS1_CFLAGS)		\
 	$(NULL)
 
@@ -16,6 +17,7 @@ progs_ldadd     =                                       \
 	$(GLIB2_LIBS)					\
 	$(GOBJECT2_LIBS)				\
 	$(GIO2_LIBS)					\
+	$(GTHREAD2_LIBS)				\
         $(top_builddir)/gdbus/libgdbus-standalone.la	\
 	$(NULL)
 
@@ -23,6 +25,7 @@ TEST_PROGS += connection
 TEST_PROGS += names
 TEST_PROGS += proxy
 TEST_PROGS += introspection
+TEST_PROGS += threading
 
 connection_SOURCES = connection.c sessionbus.c sessionbus.h tests.h tests.c
 connection_LDADD = $(progs_ldadd)
@@ -35,3 +38,6 @@ proxy_LDADD = $(progs_ldadd)
 
 introspection_SOURCES = introspection.c sessionbus.c sessionbus.h tests.h tests.c
 introspection_LDADD = $(progs_ldadd)
+
+threading_SOURCES = threading.c sessionbus.c sessionbus.h tests.h tests.c
+threading_LDADD = $(progs_ldadd)
