@@ -1,6 +1,7 @@
 #!/usr/bin/python
 
 import gobject
+import time
 
 import dbus
 import dbus.service
@@ -188,6 +189,16 @@ class TestService(dbus.service.Object):
                           in_signature='so', out_signature='')
     def EmitSignal(self, str1, objpath1):
         self.TestSignal (str1 + " .. in bed!", objpath1 + "/in/bed", "a variant")
+
+    # ----------------------------------------------------------------------------------------------------
+
+    @dbus.service.method("com.example.Frob", in_signature='i', out_signature='',
+                         async_callbacks=('return_cb', 'raise_cb'))
+    def Sleep(self, msec, return_cb, raise_cb):
+        def return_from_async_wait():
+            return_cb()
+            return False
+        gobject.timeout_add(msec, return_from_async_wait)
 
     # ----------------------------------------------------------------------------------------------------
 

@@ -242,6 +242,232 @@ test_delivery_in_thread (void)
 
 /* ---------------------------------------------------------------------------------------------------- */
 
+typedef struct {
+  GDBusProxy *proxy;
+  gint msec;
+  guint num;
+  gboolean async;
+
+  GMainLoop *thread_loop;
+  GThread *thread;
+
+  gboolean done;
+} SyncThreadData;
+
+static void
+sleep_cb (GDBusProxy   *proxy,
+          GAsyncResult *res,
+          gpointer      user_data)
+{
+  SyncThreadData *data = user_data;
+  GError *error;
+  gboolean ret;
+
+  error = NULL;
+  ret = g_dbus_proxy_invoke_method_finish (proxy,
+                                           "",
+                                           res,
+                                           &error,
+                                           G_TYPE_INVALID);
+  g_assert_no_error (error);
+  g_assert (ret);
+
+  g_assert (data->thread == g_thread_self ());
+
+  g_main_loop_quit (data->thread_loop);
+
+  //g_debug ("async cb (%p)", g_thread_self ());
+}
+
+static gpointer
+test_sleep_in_thread_func (gpointer _data)
+{
+  SyncThreadData *data = _data;
+  GMainContext *thread_context;
+  guint n;
+
+  thread_context = g_main_context_new ();
+  data->thread_loop = g_main_loop_new (thread_context, FALSE);
+  g_main_context_push_thread_default (thread_context);
+
+  data->thread = g_thread_self ();
+
+  for (n = 0; n < data->num; n++)
+    {
+      if (data->async)
+        {
+          //g_debug ("invoking async (%p)", g_thread_self ());
+          g_dbus_proxy_invoke_method (data->proxy,
+                                      "Sleep",
+                                      "i",
+                                      -1, NULL,
+                                      (GAsyncReadyCallback) sleep_cb,
+                                      data,
+                                      G_TYPE_INT, data->msec,
+                                      G_TYPE_INVALID);
+          g_main_loop_run (data->thread_loop);
+          //g_debug ("done invoking async (%p)", g_thread_self ());
+        }
+      else
+        {
+          GError *error;
+          gboolean ret;
+          error = NULL;
+          //g_debug ("invoking sync (%p)", g_thread_self ());
+          ret = g_dbus_proxy_invoke_method_sync (data->proxy,
+                                                 "Sleep",
+                                                 "i", "",
+                                                 -1, NULL, &error,
+                                                 G_TYPE_INT, data->msec,
+                                                 G_TYPE_INVALID,
+                                                 G_TYPE_INVALID);
+          //g_debug ("done invoking sync (%p)", g_thread_self ());
+          g_assert_no_error (error);
+          g_assert (ret);
+        }
+    }
+
+  g_main_context_pop_thread_default (thread_context);
+  g_main_loop_unref (data->thread_loop);
+  g_main_context_unref (thread_context);
+
+  data->done = TRUE;
+  g_main_loop_quit (loop);
+
+  return NULL;
+}
+
+static void
+on_proxy_appeared (GDBusConnection *connection,
+                   const gchar     *name,
+                   const gchar     *name_owner,
+                   GDBusProxy      *proxy,
+                   gpointer         user_data)
+{
+  guint n;
+
+  /**
+   * Check that multiple threads can do calls without interferring with
+   * each other. We do this by creating three threads that call the
+   * Sleep() method on the server (which handles it asynchronously, e.g.
+   * it won't block other requests) with different sleep durations and
+   * a number of times. We do this so each set of calls add up to 4000
+   * milliseconds.
+   *
+   * We run this test twice - first with async calls in each thread, then
+   * again with sync calls
+   */
+
+  /* TODO: The sync calls are broken - this is likely a libdbus-1 bug. Need
+   *       to investigate. So only do the async calls for now.
+   */
+  for (n = 0; n < /* 2 */ 1; n++)
+    {
+      gboolean do_async;
+      GThread *thread1;
+      GThread *thread2;
+      GThread *thread3;
+      SyncThreadData data1;
+      SyncThreadData data2;
+      SyncThreadData data3;
+      GError *error;
+      GTimeVal start_time;
+      GTimeVal end_time;
+      guint elapsed_msec;
+
+      error = NULL;
+      do_async = (n == 0);
+
+      g_get_current_time (&start_time);
+
+      data1.proxy = proxy;
+      data1.msec = 40;
+      data1.num = 100;
+      data1.async = do_async;
+      data1.done = FALSE;
+      thread1 = g_thread_create (test_sleep_in_thread_func,
+                                 &data1,
+                                 TRUE,
+                                 &error);
+      g_assert_no_error (error);
+      g_assert (thread1 != NULL);
+
+      data2.proxy = proxy;
+      data2.msec = 20;
+      data2.num = 200;
+      data2.async = do_async;
+      data2.done = FALSE;
+      thread2 = g_thread_create (test_sleep_in_thread_func,
+                                 &data2,
+                                 TRUE,
+                                 &error);
+      g_assert_no_error (error);
+      g_assert (thread2 != NULL);
+
+      data3.proxy = proxy;
+      data3.msec = 100;
+      data3.num = 40;
+      data3.async = do_async;
+      data3.done = FALSE;
+      thread3 = g_thread_create (test_sleep_in_thread_func,
+                                 &data3,
+                                 TRUE,
+                                 &error);
+      g_assert_no_error (error);
+      g_assert (thread3 != NULL);
+
+      /* we handle messages in the main loop - threads will quit it when they are done */
+      while (!(data1.done && data2.done && data3.done))
+        g_main_loop_run (loop);
+
+      g_thread_join (thread1);
+      g_thread_join (thread2);
+      g_thread_join (thread3);
+
+      g_get_current_time (&end_time);
+
+      elapsed_msec = ((end_time.tv_sec * G_USEC_PER_SEC + end_time.tv_usec) -
+                      (start_time.tv_sec * G_USEC_PER_SEC + start_time.tv_usec)) / 1000;
+
+      //g_debug ("Elapsed time for %s = %d msec", n == 0 ? "async" : "sync", elapsed_msec);
+
+      /* elapsed_msec should be 4000 msec + change for overhead */
+      g_assert_cmpint (elapsed_msec, >=, 4000);
+      g_assert_cmpint (elapsed_msec,  <, 5000);
+    }
+
+  g_main_loop_quit (loop);
+}
+
+static void
+on_proxy_vanished (GDBusConnection *connection,
+                   const gchar     *name,
+                   gpointer         user_data)
+{
+}
+
+static void
+test_method_calls_in_thread (void)
+{
+  guint watcher_id;
+
+  watcher_id = g_bus_watch_proxy (G_BUS_TYPE_SESSION,
+                                  "com.example.TestService",
+                                  "/com/example/TestObject",
+                                  "com.example.Frob",
+                                  G_TYPE_DBUS_PROXY,
+                                  G_DBUS_PROXY_FLAGS_NONE,
+                                  on_proxy_appeared,
+                                  on_proxy_vanished,
+                                  NULL);
+
+  g_main_loop_run (loop);
+
+  g_bus_unwatch_proxy (watcher_id);
+}
+
+/* ---------------------------------------------------------------------------------------------------- */
+
 int
 main (int   argc,
       char *argv[])
@@ -269,6 +495,12 @@ main (int   argc,
    */
   usleep (500 * 1000);
 
+  /* this is safe; testserver will exit once the bus goes away */
+  g_assert (g_spawn_command_line_async ("./testserver.py", NULL));
+
+  /* wait for the service to come up */
+  usleep (500 * 1000);
+
   /* Create the connection in the main thread */
   error = NULL;
   c = g_dbus_connection_bus_get_sync (G_BUS_TYPE_SESSION, NULL, &error);
@@ -276,6 +508,7 @@ main (int   argc,
   g_assert (c != NULL);
 
   g_test_add_func ("/gdbus/delivery-in-thread", test_delivery_in_thread);
+  g_test_add_func ("/gdbus/method-calls-in-thread", test_method_calls_in_thread);
 
   ret = g_test_run();
 
