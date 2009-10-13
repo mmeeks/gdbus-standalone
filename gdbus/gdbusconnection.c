@@ -2613,7 +2613,7 @@ g_dbus_connection_unregister_object (GDBusConnection *connection,
  * @object_path: Path of remote object.
  * @interface_name: D-Bus interface to invoke method on.
  * @method_name: The name of the method to invoke.
- * @parameters: A #GVariant tuple with parameters for themethod or %NULL if not passing parameters.
+ * @parameters: A #GVariant tuple with parameters for the method or %NULL if not passing parameters.
  *
  * Invokes a method without waiting for a reply.
  *
@@ -2668,7 +2668,7 @@ g_dbus_connection_invoke_method (GDBusConnection    *connection,
  * @object_path: Path of remote object.
  * @interface_name: D-Bus interface to invoke method on.
  * @method_name: The name of the method to invoke.
- * @parameters: A #GVariant tuple with parameters for themethod or %NULL if not passing parameters.
+ * @parameters: A #GVariant tuple with parameters for the method or %NULL if not passing parameters.
  * @timeout_msec: The timeout in milliseconds or -1 to use the default timeout.
  * @cancellable: A #GCancellable or %NULL.
  * @callback: A #GAsyncReadyCallback to call when the request is satisfied.
@@ -2794,7 +2794,7 @@ g_dbus_connection_invoke_method_with_reply_finish (GDBusConnection    *connectio
  * @object_path: Path of remote object.
  * @interface_name: D-Bus interface to invoke method on.
  * @method_name: The name of the method to invoke.
- * @parameters: A #GVariant tuple with parameters for themethod or %NULL if not passing parameters.
+ * @parameters: A #GVariant tuple with parameters for the method or %NULL if not passing parameters.
  * @timeout_msec: The timeout in milliseconds or -1 to use the default timeout.
  * @cancellable: A #GCancellable or %NULL.
  * @error: Return location for error or %NULL.
