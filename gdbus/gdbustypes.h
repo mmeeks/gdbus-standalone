@@ -35,6 +35,7 @@ typedef struct _GDBusConnection       GDBusConnection;
 typedef struct _GDBusProxy            GDBusProxy;
 typedef struct _GDBusStructure        GDBusStructure;
 typedef struct _GDBusVariant          GDBusVariant;
+typedef struct _GDBusInterfaceVTable  GDBusInterfaceVTable;
 
 typedef struct _GDBusAnnotationInfo   GDBusAnnotationInfo;
 typedef struct _GDBusArgInfo          GDBusArgInfo;

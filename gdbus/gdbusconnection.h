@@ -110,6 +110,42 @@ gboolean         g_dbus_connection_get_is_disconnected        (GDBusConnection  
 void             g_dbus_connection_set_exit_on_disconnect     (GDBusConnection    *connection,
                                                                gboolean            exit_on_disconnect);
 
+/**
+ * GDBusInterfaceVTable:
+ *
+ * Virtual table for handling incoming method calls for a D-Bus
+ * interface.
+ */
+struct _GDBusInterfaceVTable
+{
+  /* TODO: vfuncs for handling messages / properties */
+
+  /*< private >*/
+  /* Padding for future expansion */
+  void (*_g_reserved1) (void);
+  void (*_g_reserved2) (void);
+  void (*_g_reserved3) (void);
+  void (*_g_reserved4) (void);
+  void (*_g_reserved5) (void);
+  void (*_g_reserved6) (void);
+  void (*_g_reserved7) (void);
+  void (*_g_reserved8) (void);
+};
+
+guint            g_dbus_connection_register_object            (GDBusConnection            *connection,
+                                                               GObject                    *object,
+                                                               const gchar                *object_path,
+                                                               const gchar                *interface_name,
+                                                               const GDBusInterfaceInfo   *introspection_data,
+                                                               const GDBusInterfaceVTable *vtable,
+                                                               GDestroyNotify              on_unregistration_func,
+                                                               gpointer                    unregistration_data,
+                                                               GError                    **error);
+gboolean         g_dbus_connection_unregister_object          (GDBusConnection            *connection,
+                                                               guint                       registration_id);
+
+/* TODO: make it possible to export a subtree (cf. dbus_connection_register_fallback()) */
+
 /* The following is only for the C object mapping and should not be bound to other languages */
 
 /**

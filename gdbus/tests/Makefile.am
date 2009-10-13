@@ -26,6 +26,7 @@ TEST_PROGS += names
 TEST_PROGS += proxy
 TEST_PROGS += introspection
 TEST_PROGS += threading
+TEST_PROGS += export
 
 connection_SOURCES = connection.c sessionbus.c sessionbus.h tests.h tests.c
 connection_LDADD = $(progs_ldadd)
@@ -41,3 +42,6 @@ introspection_LDADD = $(progs_ldadd)
 
 threading_SOURCES = threading.c sessionbus.c sessionbus.h tests.h tests.c
 threading_LDADD = $(progs_ldadd)
+
+export_SOURCES = export.c sessionbus.c sessionbus.h tests.h tests.c
+export_LDADD = $(progs_ldadd)

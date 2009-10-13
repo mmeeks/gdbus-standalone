@@ -562,20 +562,23 @@ initable_init (GInitable       *initable,
 
   ret = FALSE;
 
-  /* load all properties synchronously */
-  if (!g_dbus_proxy_invoke_method_sync (proxy,
-                                        "org.freedesktop.DBus.Properties.GetAll",
-                                        "s",
-                                        "a{sv}",
-                                        -1,           /* timeout */
-                                        cancellable,
-                                        error,
-                                        G_TYPE_STRING, proxy->priv->interface_name,
-                                        G_TYPE_INVALID,
-                                        G_TYPE_HASH_TABLE, &proxy->priv->properties,
-                                        G_TYPE_INVALID))
+  if (!(proxy->priv->flags & G_DBUS_PROXY_FLAGS_DO_NOT_LOAD_PROPERTIES))
     {
-      goto out;
+      /* load all properties synchronously */
+      if (!g_dbus_proxy_invoke_method_sync (proxy,
+                                            "org.freedesktop.DBus.Properties.GetAll",
+                                            "s",
+                                            "a{sv}",
+                                            -1,           /* timeout */
+                                            cancellable,
+                                            error,
+                                            G_TYPE_STRING, proxy->priv->interface_name,
+                                            G_TYPE_INVALID,
+                                            G_TYPE_HASH_TABLE, &proxy->priv->properties,
+                                            G_TYPE_INVALID))
+        {
+          goto out;
+        }
     }
 
   subscribe_to_signals (proxy);
@@ -602,6 +605,8 @@ async_initable_init_async (GAsyncInitable     *initable,
                            gpointer            user_data)
 {
   GDBusProxy *proxy = G_DBUS_PROXY (initable);
+
+  /* TODO: avoid loading properties if requested */
 
   /* load all properties asynchronously */
   g_dbus_proxy_invoke_method (proxy,

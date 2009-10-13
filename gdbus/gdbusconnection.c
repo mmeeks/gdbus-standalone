@@ -68,7 +68,14 @@ struct _GDBusConnectionPrivate
   GHashTable *map_rule_to_signal_data;
   GHashTable *map_id_to_signal_data;
   GHashTable *map_sender_to_signal_data_array;
+
+  /* Maps used for exporting interfaces */
+  GHashTable *map_object_path_to_eo; /* gchar* -> ExportedObject* */
+  GHashTable *map_id_to_ei;          /* guint -> ExportedInterface* */
 };
+
+typedef struct ExportedObject ExportedObject;
+static void exported_object_free (ExportedObject *eo);
 
 enum
 {
@@ -152,6 +159,9 @@ g_dbus_connection_finalize (GObject *object)
   g_hash_table_unref (connection->priv->map_rule_to_signal_data);
   g_hash_table_unref (connection->priv->map_id_to_signal_data);
   g_hash_table_unref (connection->priv->map_sender_to_signal_data_array);
+
+  g_hash_table_unref (connection->priv->map_id_to_ei);
+  g_hash_table_unref (connection->priv->map_object_path_to_eo);
 
   if (G_OBJECT_CLASS (g_dbus_connection_parent_class)->finalize != NULL)
     G_OBJECT_CLASS (g_dbus_connection_parent_class)->finalize (object);
@@ -367,6 +377,14 @@ g_dbus_connection_init (GDBusConnection *connection)
                                                                              g_str_equal,
                                                                              g_free,
                                                                              NULL);
+
+  connection->priv->map_object_path_to_eo = g_hash_table_new_full (g_str_hash,
+                                                                   g_str_equal,
+                                                                   NULL,
+                                                                   (GDestroyNotify) exported_object_free);
+
+  connection->priv->map_id_to_ei = g_hash_table_new (g_direct_hash,
+                                                     g_direct_equal);
 }
 
 /**
@@ -1496,6 +1514,7 @@ args_to_rule (const gchar         *sender,
 }
 
 static guint _global_subscriber_id = 1;
+static guint _global_registration_id = 1;
 
 /* ---------------------------------------------------------------------------------------------------- */
 
@@ -2212,6 +2231,376 @@ g_dbus_connection_signal_unsubscribe (GDBusConnection     *connection,
 {
   /* TODO: free CSignalSubscriber */
   g_dbus_connection_dbus_1_signal_unsubscribe (connection, subscription_id);
+}
+
+/* ---------------------------------------------------------------------------------------------------- */
+
+struct ExportedObject
+{
+  gchar *object_path;
+  GDBusConnection *connection;
+
+  /* maps gchar* -> ExportedInterface* */
+  GHashTable *map_if_name_to_ei;
+};
+
+/* only called with lock held */
+static void
+exported_object_free (ExportedObject *eo)
+{
+  if (eo->connection->priv->dbus_1_connection != NULL)
+    {
+      if (!dbus_connection_unregister_object_path (eo->connection->priv->dbus_1_connection,
+                                                   eo->object_path))
+        _g_dbus_oom ();
+    }
+  g_free (eo->object_path);
+  g_object_unref (eo->connection);
+  g_hash_table_unref (eo->map_if_name_to_ei);
+  g_free (eo);
+}
+
+typedef struct
+{
+  ExportedObject *eo;
+
+  guint                       id;
+  gchar                      *interface_name;
+  const GDBusInterfaceVTable *vtable;
+  GObject                    *object;             /* may be NULL */
+  const GDBusInterfaceInfo   *introspection_data; /* may be NULL */
+
+  GDestroyNotify              on_unregistration_func;
+  gpointer                    unregistration_data;
+} ExportedInterface;
+
+/* not holding lock */
+static void
+on_exported_object_finalized (gpointer  user_data,
+                              GObject  *where_the_object_was)
+{
+  ExportedInterface *ei = user_data;
+
+  ei->object = NULL; /* object is byebye already - avoid calling weak_unref() in exported_inteface_free() */
+  g_dbus_connection_unregister_object (ei->eo->connection, ei->id);
+}
+
+/* called with lock held */
+static void
+exported_interface_free (ExportedInterface *ei)
+{
+  if (ei->on_unregistration_func != NULL)
+    {
+      /* TODO: push to thread-default mainloop */
+      ei->on_unregistration_func (ei->unregistration_data);
+    }
+  if (ei->object != NULL)
+    {
+      g_object_weak_unref (ei->object, on_exported_object_finalized, ei);
+    }
+  g_free (ei->interface_name);
+  g_free (ei);
+}
+
+static DBusHandlerResult
+handle_introspect (DBusConnection *connection,
+                   ExportedObject *eo,
+                   DBusMessage    *message)
+{
+  guint n;
+  GString *s;
+  char **subnode_paths;
+  DBusMessage *reply;
+  GHashTableIter hash_iter;
+  ExportedInterface *ei;
+
+  /* first the header with the standard interfaces */
+  s = g_string_new (DBUS_INTROSPECT_1_0_XML_DOCTYPE_DECL_NODE
+                    "<!-- GDBus 0.1 -->\n"
+                    "<node>\n"
+                    "  <interface name=\"org.freedesktop.DBus.Properties\">\n"
+                    "    <method name=\"Get\">\n"
+                    "      <arg type=\"s\" name=\"interface_name\" direction=\"in\"/>\n"
+                    "      <arg type=\"s\" name=\"property_name\" direction=\"in\"/>\n"
+                    "      <arg type=\"v\" name=\"value\" direction=\"out\"/>\n"
+                    "    </method>\n"
+                    "    <method name=\"GetAll\">\n"
+                    "      <arg type=\"s\" name=\"interface_name\" direction=\"in\"/>\n"
+                    "      <arg type=\"a{sv}\" name=\"properties\" direction=\"out\"/>\n"
+                    "    </method>\n"
+                    "    <method name=\"Set\">\n"
+                    "      <arg type=\"s\" name=\"interface_name\" direction=\"in\"/>\n"
+                    "      <arg type=\"s\" name=\"property_name\" direction=\"in\"/>\n"
+                    "      <arg type=\"v\" name=\"value\" direction=\"in\"/>\n"
+                    "    </method>\n"
+                    "    <signal name=\"PropertiesChanged\">\n"
+                    "      <arg type=\"s\" name=\"interface_name\"/>\n"
+                    "      <arg type=\"a{sv}\" name=\"changed_properties\"/>\n"
+                    "    </signal>\n"
+                    "  </interface>\n"
+                    "  <interface name=\"org.freedesktop.DBus.Introspectable\">\n"
+                    "    <method name=\"Introspect\">\n"
+                    "      <arg type=\"s\" name=\"xml_data\" direction=\"out\"/>\n"
+                    "    </method>\n"
+                    "  </interface>\n"
+                    "  <interface name=\"org.freedesktop.DBus.Peer\">\n"
+                    "    <method name=\"Ping\"/>\n"
+                    "    <method name=\"GetMachineId\">\n"
+                    "      <arg type=\"s\" name=\"machine_uuid\" direction=\"out\"/>\n"
+                    "    </method>\n"
+                    "  </interface>\n");
+
+  /* then include the registered interfaces */
+  g_hash_table_iter_init (&hash_iter, eo->map_if_name_to_ei);
+  while (g_hash_table_iter_next (&hash_iter, NULL, (gpointer) &ei))
+    {
+      if (ei->introspection_data != NULL)
+        {
+          g_dbus_interface_info_generate_xml (ei->introspection_data,
+                                              2,
+                                              s);
+        }
+      else
+        {
+          g_string_append_printf (s, "  <interface name=\"%s\"/>\n", ei->interface_name);
+        }
+    }
+
+  /* finally include nodes registered below us */
+  if (!dbus_connection_list_registered (eo->connection->priv->dbus_1_connection,
+                                        eo->object_path,
+                                        &subnode_paths))
+    _g_dbus_oom ();
+  for (n = 0; subnode_paths != NULL && subnode_paths[n] != NULL; n++)
+    {
+      g_string_append_printf (s, "  <node name=\"%s\"/>\n", subnode_paths[n]);
+    }
+  dbus_free_string_array (subnode_paths);
+
+  g_string_append (s, "</node>\n");
+
+  reply = dbus_message_new_method_return (message);
+  if (!dbus_message_append_args (reply,
+                                 DBUS_TYPE_STRING, &s->str,
+                                 DBUS_TYPE_INVALID))
+    _g_dbus_oom ();
+  g_dbus_connection_send_dbus_1_message (eo->connection, reply);
+  g_string_free (s, TRUE);
+
+  return DBUS_HANDLER_RESULT_HANDLED;
+}
+
+static DBusHandlerResult
+dbus_1_obj_vtable_message_func (DBusConnection *connection,
+                                DBusMessage    *message,
+                                void           *user_data)
+{
+  ExportedObject *eo = user_data;
+  DBusHandlerResult result;
+
+  G_LOCK (connection_lock);
+
+  result = DBUS_HANDLER_RESULT_NOT_YET_HANDLED;
+
+  //g_debug ("in obj_vtable_message_func for path %s (%d)", eo->object_path, g_hash_table_size (eo->map_if_name_to_ei));
+  //PRINT_MESSAGE (message);
+
+  if (dbus_message_is_method_call (message,
+                                   "org.freedesktop.DBus.Introspectable",
+                                   "Introspect"))
+    {
+      result = handle_introspect (connection, eo, message);
+      goto out;
+    }
+
+ out:
+  G_UNLOCK (connection_lock);
+  return result;
+}
+
+static const DBusObjectPathVTable dbus_1_obj_vtable =
+{
+  NULL,
+  dbus_1_obj_vtable_message_func,
+  NULL,
+  NULL,
+  NULL,
+  NULL
+};
+
+/**
+ * g_dbus_connection_register_object:
+ * @connection: A #GDBusConnection.
+ * @object: The object to register or %NULL.
+ * @object_path: The object path to register @object at.
+ * @interface_name: The D-Bus interface to register.
+ * @introspection_data: Introspection data for the interface or %NULL.
+ * @vtable: A #GDBusInterfaceVTable to call into or %NULL.
+ * @on_unregistration_func: Function to call when @object is unregistered or %NULL.
+ * @unregistration_data: Data to pass to @on_unregistration_func.
+ * @error: Return location for error or %NULL.
+ *
+ * Exports @object at @object_path and @interface_name.
+ *
+ * Calls to functions in @vtable (and @on_unregistration_func) will
+ * happen in the <link linkend="g-main-context-push-thread-default">thread-default main
+ * loop</link> of the thread you are calling this method from.
+ *
+ * If an existing object with is already registered at @object_path and @interface_name or
+ * another binding is already exporting objects at @object_path, then @error is set to
+ * #G_DBUS_ERROR_OBJECT_PATH_IN_USE.
+ *
+ * This function will take a weak reference to @object if it is not
+ * %NULL. If @object is finalized before unregistering it, then it is
+ * automatically unregistered.
+ *
+ * Returns: 0 if @error is set, otherwise a registration id (never 0)
+ * that can be used with g_dbus_connection_unregister_object() .
+ */
+guint
+g_dbus_connection_register_object (GDBusConnection            *connection,
+                                   GObject                    *object,
+                                   const gchar                *object_path,
+                                   const gchar                *interface_name,
+                                   const GDBusInterfaceInfo   *introspection_data,
+                                   const GDBusInterfaceVTable *vtable,
+                                   GDestroyNotify              on_unregistration_func,
+                                   gpointer                    unregistration_data,
+                                   GError                    **error)
+{
+  ExportedObject *eo;
+  ExportedInterface *ei;
+  guint ret;
+
+  g_return_val_if_fail (G_IS_DBUS_CONNECTION (connection), 0);
+  g_return_val_if_fail (!g_dbus_connection_get_is_disconnected (connection), 0);
+  g_return_val_if_fail (interface_name != NULL, 0);
+  g_return_val_if_fail (object_path != NULL, 0);
+
+  ret = 0;
+
+  G_LOCK (connection_lock);
+
+  eo = g_hash_table_lookup (connection->priv->map_object_path_to_eo, object_path);
+  if (eo == NULL)
+    {
+      DBusError dbus_error;
+
+      eo = g_new0 (ExportedObject, 1);
+      eo->object_path = g_strdup (object_path);
+      eo->connection = g_object_ref (connection);
+      eo->map_if_name_to_ei = g_hash_table_new_full (g_str_hash,
+                                                     g_str_equal,
+                                                     NULL,
+                                                     (GDestroyNotify) exported_interface_free);
+      g_hash_table_insert (connection->priv->map_object_path_to_eo, eo->object_path, eo);
+
+      dbus_error_init (&dbus_error);
+      if (!dbus_connection_try_register_object_path (connection->priv->dbus_1_connection,
+                                                     object_path,
+                                                     &dbus_1_obj_vtable,
+                                                     eo,
+                                                     &dbus_error))
+        {
+          if (g_strcmp0 (dbus_error.name, DBUS_ERROR_NO_MEMORY) == 0)
+            _g_dbus_oom ();
+
+          g_dbus_error_set_dbus_error (error,
+                                       &dbus_error,
+                                       NULL,
+                                       _("Another D-Bus binding is already exporting an object at %s"),
+                                       object_path);
+          dbus_error_free (&dbus_error);
+          goto out;
+        }
+    }
+
+  ei = g_hash_table_lookup (eo->map_if_name_to_ei, interface_name);
+  if (ei != NULL)
+    {
+      g_set_error (error,
+                   G_DBUS_ERROR,
+                   G_DBUS_ERROR_OBJECT_PATH_IN_USE,
+                   _("An object is already exported for the interface %s at %s"),
+                   interface_name,
+                   object_path);
+      goto out;
+    }
+
+  ei = g_new0 (ExportedInterface, 1);
+  ei->id = _global_registration_id++; /* TODO: overflow etc. */
+  ei->eo = eo;
+  ei->object = object;
+  if (ei->object != NULL)
+    g_object_weak_ref (object, on_exported_object_finalized, ei);
+  ei->on_unregistration_func = on_unregistration_func;
+  ei->unregistration_data = unregistration_data;
+  ei->vtable = vtable;
+  ei->introspection_data = introspection_data;
+  ei->interface_name = g_strdup (interface_name);
+
+  g_hash_table_insert (eo->map_if_name_to_ei,
+                       (gpointer) ei->interface_name,
+                       ei);
+  g_hash_table_insert (connection->priv->map_id_to_ei,
+                       GUINT_TO_POINTER (ei->id),
+                       ei);
+
+  ret = ei->id;
+
+ out:
+  G_UNLOCK (connection_lock);
+
+  return ret;
+}
+
+/**
+ * g_dbus_connection_unregister_object:
+ * @connection: A #GDBusConnection.
+ * @registration_id: A registration id obtained from g_dbus_connection_register_object().
+ *
+ * Unregisters an object.
+ *
+ * Returns: %TRUE if the object was unregistered, %FALSE otherwise.
+ */
+gboolean
+g_dbus_connection_unregister_object (GDBusConnection *connection,
+                                     guint            registration_id)
+{
+  ExportedInterface *ei;
+  ExportedObject *eo;
+  gboolean ret;
+
+  g_return_val_if_fail (G_IS_DBUS_CONNECTION (connection), FALSE);
+
+  ret = FALSE;
+
+  G_LOCK (connection_lock);
+
+  ei = g_hash_table_lookup (connection->priv->map_id_to_ei,
+                            GUINT_TO_POINTER (registration_id));
+  if (ei == NULL)
+    {
+      goto out;
+    }
+
+  eo = ei->eo;
+
+  g_assert (g_hash_table_remove (connection->priv->map_id_to_ei, GUINT_TO_POINTER (ei->id)));
+  g_assert (g_hash_table_remove (eo->map_if_name_to_ei, ei->interface_name));
+  /* unregister object path if we have no more exported interfaces */
+  if (g_hash_table_size (eo->map_if_name_to_ei) == 0)
+    {
+      g_assert (g_hash_table_remove (connection->priv->map_object_path_to_eo,
+                                     eo->object_path));
+    }
+
+  ret = TRUE;
+
+ out:
+  G_UNLOCK (connection_lock);
+
+  return ret;
 }
 
 /* ---------------------------------------------------------------------------------------------------- */
