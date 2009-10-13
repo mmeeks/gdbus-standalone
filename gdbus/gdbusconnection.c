@@ -2607,6 +2607,61 @@ g_dbus_connection_unregister_object (GDBusConnection *connection,
 /* ---------------------------------------------------------------------------------------------------- */
 
 /**
+ * g_dbus_connection_invoke_method:
+ * @connection: A #GDBusConnection.
+ * @bus_name: A unique or well-known bus name.
+ * @object_path: Path of remote object.
+ * @interface_name: D-Bus interface to invoke method on.
+ * @method_name: The name of the method to invoke.
+ * @parameters: A #GVariant tuple with parameters for themethod or %NULL if not passing parameters.
+ *
+ * Invokes a method without waiting for a reply.
+ *
+ * If @parameters is not compatible with the D-Bus protocol, the method is not invoked. If you
+ * need error checking, use g_dbus_connection_invoke_method_with_reply() or
+ * g_dbus_connection_invoke_method_with_reply_sync() instead.
+ */
+void
+g_dbus_connection_invoke_method (GDBusConnection    *connection,
+                                 const gchar        *bus_name,
+                                 const gchar        *object_path,
+                                 const gchar        *interface_name,
+                                 const gchar        *method_name,
+                                 GVariant           *parameters)
+{
+  DBusMessage *message;
+
+  message = NULL;
+
+  g_return_if_fail (G_IS_DBUS_CONNECTION (connection));
+  g_return_if_fail (bus_name != NULL);
+  g_return_if_fail (object_path != NULL);
+  g_return_if_fail (interface_name != NULL);
+  g_return_if_fail (method_name != NULL);
+  g_return_if_fail ((parameters == NULL) || (g_variant_get_type_class (parameters) == G_VARIANT_TYPE_CLASS_TUPLE));
+
+  message = dbus_message_new_method_call (bus_name,
+                                          object_path,
+                                          interface_name,
+                                          method_name);
+  if (message == NULL)
+    _g_dbus_oom ();
+
+  if (!_g_dbus_gvariant_to_dbus_1 (message,
+                                   parameters,
+                                   NULL))
+    {
+      goto out;
+    }
+
+  g_dbus_connection_send_dbus_1_message (connection, message);
+
+ out:
+  if (message != NULL)
+    dbus_message_unref (message);
+}
+
+/**
  * g_dbus_connection_invoke_method_with_reply:
  * @connection: A #GDBusConnection.
  * @bus_name: A unique or well-known bus name.

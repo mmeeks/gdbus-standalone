@@ -146,6 +146,12 @@ gboolean         g_dbus_connection_unregister_object          (GDBusConnection  
 
 /* TODO: make it possible to export a subtree (cf. dbus_connection_register_fallback()) */
 
+void      g_dbus_connection_invoke_method                     (GDBusConnection    *connection,
+                                                               const gchar        *bus_name,
+                                                               const gchar        *object_path,
+                                                               const gchar        *interface_name,
+                                                               const gchar        *method_name,
+                                                               GVariant           *parameters);
 void      g_dbus_connection_invoke_method_with_reply          (GDBusConnection    *connection,
                                                                const gchar        *bus_name,
                                                                const gchar        *object_path,
