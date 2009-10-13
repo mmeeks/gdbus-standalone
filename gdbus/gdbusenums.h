@@ -85,6 +85,7 @@ typedef enum
  * GDBusError:
  * @G_DBUS_ERROR_FAILED: The operation failed.
  * @G_DBUS_ERROR_CANCELLED: The operation was cancelled.
+ * @G_DBUS_ERROR_CONVERSION_FAILED: An attempt to send #GVariant value not compatible with the D-Bus protocol was made.
  * @G_DBUS_ERROR_REMOTE_EXCEPTION: A remote exception that couldn't be
  * mapped to a #GError. Use g_dbus_error_get_remote_exception()
  * to extract the D-Bus error name.
@@ -187,6 +188,7 @@ typedef enum
 {
   G_DBUS_ERROR_FAILED,                           /*< nick=org.gtk.GDBus.Error.Failed >*/
   G_DBUS_ERROR_CANCELLED,                        /*< nick=org.gtk.GDBus.Error.Cancelled >*/
+  G_DBUS_ERROR_CONVERSION_FAILED,                /*< nick=org.gtk.GDBus.Error.ConversionFailed >*/
   G_DBUS_ERROR_REMOTE_EXCEPTION,                 /*< nick=org.gtk.GDBus.Error.RemoteException >*/
 
   /* Well-known errors in the org.freedesktop.DBus.Error namespace */

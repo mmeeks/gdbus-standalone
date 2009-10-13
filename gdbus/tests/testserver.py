@@ -23,6 +23,11 @@ class TestService(dbus.service.Object):
         else:
             return "You greeted me with '%s'. Thanks!"%(str(hello_message))
 
+    @dbus.service.method("com.example.Frob",
+                         in_signature='ss', out_signature='ss')
+    def DoubleHelloWorld(self, hello1, hello2):
+        return ("You greeted me with '%s'. Thanks!"%(str(hello1)), "Yo dawg, you uttered '%s'. Thanks!"%(str(hello2)))
+
     # ----------------------------------------------------------------------------------------------------
 
     @dbus.service.method("com.example.Frob",

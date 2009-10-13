@@ -146,6 +146,29 @@ gboolean         g_dbus_connection_unregister_object          (GDBusConnection  
 
 /* TODO: make it possible to export a subtree (cf. dbus_connection_register_fallback()) */
 
+void      g_dbus_connection_invoke_method_with_reply          (GDBusConnection    *connection,
+                                                               const gchar        *bus_name,
+                                                               const gchar        *object_path,
+                                                               const gchar        *interface_name,
+                                                               const gchar        *method_name,
+                                                               GVariant           *parameters,
+                                                               gint                timeout_msec,
+                                                               GCancellable       *cancellable,
+                                                               GAsyncReadyCallback callback,
+                                                               gpointer            user_data);
+GVariant *g_dbus_connection_invoke_method_with_reply_finish   (GDBusConnection    *connection,
+                                                               GAsyncResult       *res,
+                                                               GError            **error);
+GVariant *g_dbus_connection_invoke_method_with_reply_sync     (GDBusConnection    *connection,
+                                                               const gchar        *bus_name,
+                                                               const gchar        *object_path,
+                                                               const gchar        *interface_name,
+                                                               const gchar        *method_name,
+                                                               GVariant           *parameters,
+                                                               gint                timeout_msec,
+                                                               GCancellable       *cancellable,
+                                                               GError            **error);
+
 /* The following is only for the C object mapping and should not be bound to other languages */
 
 /**

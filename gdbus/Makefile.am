@@ -67,6 +67,7 @@ libgdbus_standalone_la_SOURCES =					\
 	gdbusvariant.h			gdbusvariant.c			\
 	gdbusprivate.h			gdbusprivate.c			\
 	gdbusintrospection.h		gdbusintrospection.c		\
+	gdbusconversion.h		gdbusconversion.c		\
 	gdbusalias.h 							\
 	gdbusaliasdef.c							\
 	$(NULL)

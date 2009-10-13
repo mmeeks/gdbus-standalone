@@ -1092,12 +1092,83 @@ test_signals (GDBusConnection *connection,
 /* ---------------------------------------------------------------------------------------------------- */
 
 static void
+variant_method_invocation_cb (GDBusConnection *connection,
+                              GAsyncResult    *res,
+                              gpointer         user_data)
+{
+  GVariant *result;
+  GError *error;
+  const gchar *greeting1;
+  const gchar *greeting2;
+
+  error = NULL;
+  result = g_dbus_connection_invoke_method_with_reply_finish (connection,
+                                                              res,
+                                                              &error);
+  g_assert_no_error (error);
+  g_assert (result != NULL);
+  g_variant_get (result,
+                 "(ss)",
+                 &greeting1,
+                 &greeting2);
+  g_assert_cmpstr (greeting1, ==, "You greeted me with 'It's a GOOD day'. Thanks!");
+  g_assert_cmpstr (greeting2, ==, "Yo dawg, you uttered 'It's a CRAP day'. Thanks!");
+  g_variant_unref (result);
+
+  g_main_loop_quit (loop);
+}
+
+static void
 on_proxy_appeared (GDBusConnection *connection,
                    const gchar     *name,
                    const gchar     *name_owner,
                    GDBusProxy      *proxy,
                    gpointer         user_data)
 {
+  GVariant *result;
+  GError *error;
+  const gchar *greeting1;
+  const gchar *greeting2;
+
+  error = NULL;
+
+  result = g_dbus_connection_invoke_method_with_reply_sync (connection,
+                                                            name_owner,
+                                                            "/com/example/TestObject",
+                                                            "com.example.Frob",
+                                                            "DoubleHelloWorld",
+                                                            g_variant_new ("(ss)",
+                                                                           "It's a good day",
+                                                                           "It's a crap day"),
+                                                            -1,
+                                                            NULL,
+                                                            &error);
+  g_assert_no_error (error);
+  g_assert (result != NULL);
+  g_variant_get (result,
+                 "(ss)",
+                 &greeting1,
+                 &greeting2);
+  g_assert_cmpstr (greeting1, ==, "You greeted me with 'It's a good day'. Thanks!");
+  g_assert_cmpstr (greeting2, ==, "Yo dawg, you uttered 'It's a crap day'. Thanks!");
+  g_variant_unref (result);
+
+  /* now do it async */
+  g_dbus_connection_invoke_method_with_reply (connection,
+                                              name_owner,
+                                              "/com/example/TestObject",
+                                              "com.example.Frob",
+                                              "DoubleHelloWorld",
+                                              g_variant_new ("(ss)",
+                                                             "It's a GOOD day",
+                                                             "It's a CRAP day"),
+                                              -1,
+                                              NULL,
+                                              (GAsyncReadyCallback) variant_method_invocation_cb,
+                                              NULL);
+  g_main_loop_run (loop);
+
+
   test_marshalling (connection, name, name_owner, proxy);
   test_properties (connection, name, name_owner, proxy);
   test_signals (connection, name, name_owner, proxy);
