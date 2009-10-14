@@ -34,6 +34,7 @@
 #include <gdbus/gdbusproxywatching.h>
 #include <gdbus/gdbusproxy.h>
 #include <gdbus/gdbusintrospection.h>
+#include <gdbus/gdbusmethodinvocation.h>
 
 #undef __G_DBUS_G_DBUS_H_INSIDE__
 

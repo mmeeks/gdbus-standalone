@@ -125,7 +125,7 @@ struct _GDBusInterfaceVTable
                               const gchar           *object_path,
                               const gchar           *method_name,
                               GVariant              *parameters,
-                              GDBusMethodInvocation *method_invocation);
+                              GDBusMethodInvocation *invocation);
 
   /*< private >*/
   /* Padding for future expansion */

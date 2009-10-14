@@ -31,6 +31,7 @@
 #include "gdbusenumtypes.h"
 #include "gdbusconversion.h"
 #include "gdbusintrospection.h"
+#include "gdbusmethodinvocation.h"
 #include "gdbusprivate.h"
 
 /**
@@ -71,8 +72,6 @@ struct _GDBusConnectionPrivate
   GHashTable *map_id_to_ei;          /* guint -> ExportedInterface* */
 };
 
-static void         g_dbus_connection_send_dbus_1_message                      (GDBusConnection    *connection,
-                                                                                DBusMessage        *message);
 static void         g_dbus_connection_send_dbus_1_message_with_reply           (GDBusConnection    *connection,
                                                                                 DBusMessage        *message,
                                                                                 gint                timeout_msec,
@@ -1066,9 +1065,9 @@ g_dbus_connection_get_unique_name (GDBusConnection *connection)
 
 /* ---------------------------------------------------------------------------------------------------- */
 
-static void
-g_dbus_connection_send_dbus_1_message (GDBusConnection    *connection,
-                                       DBusMessage        *message)
+void
+_g_dbus_connection_send_dbus_1_message (GDBusConnection    *connection,
+                                        DBusMessage        *message)
 {
   g_return_if_fail (G_IS_DBUS_CONNECTION (connection));
   g_return_if_fail (message != NULL);
@@ -2024,6 +2023,7 @@ typedef struct
   GObject                    *object;             /* may be NULL */
   const GDBusInterfaceInfo   *introspection_data; /* may be NULL */
 
+  GMainContext               *context;
   GDestroyNotify              on_unregistration_func;
   gpointer                    unregistration_data;
 } ExportedInterface;
@@ -2051,6 +2051,10 @@ exported_interface_free (ExportedInterface *ei)
   if (ei->object != NULL)
     {
       g_object_weak_unref (ei->object, on_exported_object_finalized, ei);
+    }
+  if (ei->context != NULL)
+    {
+      g_main_context_unref (ei->context);
     }
   g_free (ei->interface_name);
   g_free (ei);
@@ -2138,10 +2142,30 @@ handle_introspect (DBusConnection *connection,
                                  DBUS_TYPE_STRING, &s->str,
                                  DBUS_TYPE_INVALID))
     _g_dbus_oom ();
-  g_dbus_connection_send_dbus_1_message (eo->connection, reply);
+  _g_dbus_connection_send_dbus_1_message (eo->connection, reply);
   g_string_free (s, TRUE);
 
   return DBUS_HANDLER_RESULT_HANDLED;
+}
+
+/* called in thread where object was registered */
+static gboolean
+invoke_method_in_idle_cb (gpointer user_data)
+{
+  GDBusMethodInvocation *invocation = G_DBUS_METHOD_INVOCATION (user_data);
+  GDBusInterfaceVTable *vtable;
+
+  vtable = g_object_get_data (G_OBJECT (invocation), "g-dbus-interface-vtable");
+  g_assert (vtable != NULL && vtable->handle_method_call != NULL);
+
+  vtable->handle_method_call (g_dbus_method_invocation_get_connection (invocation),
+                              g_dbus_method_invocation_get_object (invocation),
+                              g_dbus_method_invocation_get_sender (invocation),
+                              g_dbus_method_invocation_get_object_path (invocation),
+                              g_dbus_method_invocation_get_method_name (invocation),
+                              g_dbus_method_invocation_get_parameters (invocation),
+                              g_object_ref (invocation));
+  return FALSE;
 }
 
 static DBusHandlerResult
@@ -2150,6 +2174,7 @@ dbus_1_obj_vtable_message_func (DBusConnection *connection,
                                 void           *user_data)
 {
   ExportedObject *eo = user_data;
+  const char *interface_name;
   DBusHandlerResult result;
 
   G_LOCK (connection_lock);
@@ -2158,6 +2183,100 @@ dbus_1_obj_vtable_message_func (DBusConnection *connection,
 
   //g_debug ("in obj_vtable_message_func for path %s (%d)", eo->object_path, g_hash_table_size (eo->map_if_name_to_ei));
   //PRINT_MESSAGE (message);
+
+  /* see if we have an interface for this handling this call */
+  interface_name = dbus_message_get_interface (message);
+  if (interface_name != NULL)
+    {
+      ExportedInterface *ei;
+      ei = g_hash_table_lookup (eo->map_if_name_to_ei, interface_name);
+      if (ei != NULL)
+        {
+          /* we do - invoke the handler in idle in the right thread */
+          GSource *idle_source;
+          GDBusMethodInvocation *invocation;
+          GVariant *parameters;
+          GError *error;
+          const GDBusMethodInfo *method_info;
+
+          error = NULL;
+          parameters = _g_dbus_dbus_1_to_gvariant (message, &error);
+          if (parameters == NULL)
+            {
+              g_warning ("Error converting signal parameters to a GVariant: %s", error->message);
+              g_error_free (error);
+              goto out;
+            }
+
+          /* handle no vtable or handler being present */
+          if (ei->vtable == NULL || ei->vtable->handle_method_call == NULL)
+            goto out;
+
+          /* if we have introspection data, check that the incoming args are of the right type - if
+           * they are not, then fail with %G_DBUS_ERROR_INVALID_ARGS
+           */
+          method_info = NULL;
+          if (ei->introspection_data != NULL)
+            {
+              DBusMessage *reply;
+
+              method_info = g_dbus_interface_info_lookup_method_for_name (ei->introspection_data,
+                                                                          dbus_message_get_member (message));
+              if (method_info == NULL)
+                {
+                  reply = dbus_message_new_error (message,
+                                                  "org.freedesktop.DBus.Error.UnknownMethod",
+                                                  _("No such method"));
+                  _g_dbus_connection_send_dbus_1_message (eo->connection, reply);
+                  dbus_message_unref (reply);
+                  result = DBUS_HANDLER_RESULT_HANDLED;
+                  goto out;
+                }
+
+              if (!dbus_message_has_signature (message, method_info->in_signature))
+                {
+                  reply = dbus_message_new_error (message,
+                                                  "org.freedesktop.DBus.Error.InvalidArgs",
+                                                  _("Signature of message does not match what is expected"));
+                  _g_dbus_connection_send_dbus_1_message (eo->connection, reply);
+                  dbus_message_unref (reply);
+                  result = DBUS_HANDLER_RESULT_HANDLED;
+                  goto out;
+                }
+            }
+
+          invocation = g_dbus_method_invocation_new (dbus_message_get_sender (message),
+                                                     dbus_message_get_path (message),
+                                                     dbus_message_get_interface (message),
+                                                     dbus_message_get_member (message),
+                                                     g_object_ref (eo->connection),
+                                                     ei->object,
+                                                     parameters);
+          g_variant_unref (parameters);
+          g_object_set_data_full (G_OBJECT (invocation),
+                                  "dbus-1-message",
+                                  dbus_message_ref (message),
+                                  (GDestroyNotify) dbus_message_unref);
+          g_object_set_data (G_OBJECT (invocation),
+                             "g-dbus-interface-vtable",
+                             (gpointer) ei->vtable);
+          g_object_set_data (G_OBJECT (invocation),
+                             "g-dbus-method-info",
+                             (gpointer) method_info);
+
+          idle_source = g_idle_source_new ();
+          g_source_set_priority (idle_source, G_PRIORITY_DEFAULT);
+          g_source_set_callback (idle_source,
+                                 invoke_method_in_idle_cb,
+                                 invocation,
+                                 g_object_unref);
+          g_source_attach (idle_source, ei->context);
+          g_source_unref (idle_source);
+
+          result = DBUS_HANDLER_RESULT_HANDLED;
+          goto out;
+        }
+    }
 
   if (dbus_message_is_method_call (message,
                                    "org.freedesktop.DBus.Introspectable",
@@ -2292,6 +2411,9 @@ g_dbus_connection_register_object (GDBusConnection            *connection,
   ei->vtable = vtable;
   ei->introspection_data = introspection_data;
   ei->interface_name = g_strdup (interface_name);
+  ei->context = g_main_context_get_thread_default ();
+  if (ei->context != NULL)
+    g_main_context_ref (ei->context);
 
   g_hash_table_insert (eo->map_if_name_to_ei,
                        (gpointer) ei->interface_name,
@@ -2415,7 +2537,7 @@ g_dbus_connection_emit_signal (GDBusConnection    *connection,
       goto out;
     }
 
-  g_dbus_connection_send_dbus_1_message (connection, message);
+  _g_dbus_connection_send_dbus_1_message (connection, message);
 
   ret = TRUE;
 
@@ -2478,7 +2600,7 @@ g_dbus_connection_invoke_method (GDBusConnection    *connection,
       goto out;
     }
 
-  g_dbus_connection_send_dbus_1_message (connection, message);
+  _g_dbus_connection_send_dbus_1_message (connection, message);
 
   ret = TRUE;
 

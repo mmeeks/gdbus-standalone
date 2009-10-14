@@ -42,6 +42,9 @@ void _g_dbus_integrate_dbus_1_server       (DBusServer   *server,
                                             GMainContext *context);
 void _g_dbus_unintegrate_dbus_1_server     (DBusServer   *server);
 
+void _g_dbus_connection_send_dbus_1_message (GDBusConnection    *connection,
+                                             DBusMessage        *message);
+
 /* Map DBusError to GError (only intended for object mappings) */
 
 GError *_g_dbus_error_new_for_dbus_error_valist (DBusError   *dbus_error,
