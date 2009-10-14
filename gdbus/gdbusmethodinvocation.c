@@ -29,6 +29,7 @@
 #include "gdbusmethodinvocation.h"
 #include "gdbusintrospection.h"
 #include "gdbusconversion.h"
+#include "gdbuserror.h"
 #include "gdbusprivate.h"
 
 /**
@@ -665,18 +666,17 @@ void
 g_dbus_method_invocation_return_gerror (GDBusMethodInvocation *invocation,
                                         const GError          *error)
 {
-  DBusError dbus_error;
+  gchar *dbus_error_name;
 
   g_return_if_fail (G_IS_DBUS_METHOD_INVOCATION (invocation));
   g_return_if_fail (error != NULL);
 
-  dbus_error_init (&dbus_error);
-  _g_dbus_error_new_for_gerror ((GError *) error, &dbus_error);
+  dbus_error_name = g_dbus_error_encode_gerror (error);
 
   g_dbus_method_invocation_return_dbus_error (invocation,
-                                              dbus_error.name,
-                                              dbus_error.message);
-  dbus_error_free (&dbus_error);
+                                              dbus_error_name,
+                                              error->message);
+  g_free (dbus_error_name);
 }
 
 /**

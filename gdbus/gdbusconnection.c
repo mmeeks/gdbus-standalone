@@ -731,10 +731,10 @@ initable_init (GInitable       *initable,
     }
   else
     {
-      _g_dbus_error_set_dbus_error (&connection->priv->initialization_error,
-                                    &dbus_error,
-                                    NULL,
-                                    NULL);
+      g_dbus_error_set_dbus_error (&connection->priv->initialization_error,
+                                   dbus_error.name,
+                                   dbus_error.message,
+                                   NULL);
       dbus_error_free (&dbus_error);
       g_propagate_error (error, g_error_copy (connection->priv->initialization_error));
     }
@@ -2378,11 +2378,11 @@ g_dbus_connection_register_object (GDBusConnection            *connection,
           if (g_strcmp0 (dbus_error.name, DBUS_ERROR_NO_MEMORY) == 0)
             _g_dbus_oom ();
 
-          _g_dbus_error_set_dbus_error (error,
-                                        &dbus_error,
-                                        NULL,
-                                        _("Another D-Bus binding is already exporting an object at %s"),
-                                        object_path);
+          g_dbus_error_set_dbus_error (error,
+                                       dbus_error.name,
+                                       dbus_error.message,
+                                       _("Another D-Bus binding is already exporting an object at %s"),
+                                       object_path);
           dbus_error_free (&dbus_error);
           goto out;
         }

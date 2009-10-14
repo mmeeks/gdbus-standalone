@@ -45,35 +45,6 @@ void _g_dbus_unintegrate_dbus_1_server     (DBusServer   *server);
 void _g_dbus_connection_send_dbus_1_message (GDBusConnection    *connection,
                                              DBusMessage        *message);
 
-/* Map DBusError to GError (only intended for object mappings) */
-
-GError *_g_dbus_error_new_for_dbus_error_valist (DBusError   *dbus_error,
-                                                 GType       *error_types,
-                                                 const gchar *prepend_format,
-                                                 va_list      va_args);
-
-GError *_g_dbus_error_new_for_dbus_error (DBusError   *dbus_error,
-                                          GType       *error_types,
-                                          const gchar *prepend_format,
-                                          ...);
-
-void _g_dbus_error_set_dbus_error (GError      **error,
-                                   DBusError    *dbus_error,
-                                   GType        *error_types,
-                                   const gchar  *prepend_format,
-                                   ...);
-
-void _g_dbus_error_set_dbus_error_valist (GError      **error,
-                                          DBusError    *dbus_error,
-                                          GType        *error_types,
-                                          const gchar  *prepend_format,
-                                          va_list       va_args);
-
-/* Map GError to DBusError (only intended for object mappings) */
-
-void _g_dbus_error_new_for_gerror (GError    *error,
-                                   DBusError *dbus_error);
-
 G_END_DECLS
 
 #endif /* __G_DBUS_PRIVATE_H__ */

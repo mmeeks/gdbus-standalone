@@ -27,6 +27,7 @@
 #include <glib/gi18n.h>
 
 #include "gdbuserror.h"
+#include "gdbusenums.h"
 #include "gdbusenumtypes.h"
 #include "gdbusprivate.h"
 
@@ -49,175 +50,76 @@
 GQuark
 g_dbus_error_quark (void)
 {
-  return g_quark_from_static_string ("g-dbus-error-quark");
-}
+  GQuark quark;
+  static volatile gsize has_registered__volatile = 0;
 
-/**
- * g_dbus_error_get_remote_exception:
- * @error: A #GError.
- * @out_name: Return location for D-Bus error name or %NULL.
- * @out_message: Return location for D-Bus error message or %NULL.
- *
- * Analyzes @error and if the error domain is #G_DBUS_ERROR and
- * error code is #G_DBUS_ERROR_REMOTE_EXCEPTION, extracts the D-Bus
- * error name (e.g. <literal>com.example.Acme.Error.Failed</literal>)
- * in @out_name and the D-Bus error message in @out_message and
- * returns %TRUE.
- *
- * Note that this function will not warn if @error isn't a
- * #G_DBUS_ERROR_REMOTE_EXCEPTION (it will just return %FALSE) so it
- * can be used to test if @error is really a
- * #G_DBUS_ERROR_REMOTE_EXCEPTION.
- *
- * Returns: %TRUE if @out_name and @out_message is set (caller must
- * free these using g_free()), %FALSE if error is not a
- * #G_DBUS_ERROR_REMOTE_EXCEPTION.
- **/
-gboolean
-g_dbus_error_get_remote_exception (GError  *error,
-                                   gchar  **out_name,
-                                   gchar  **out_message)
-{
-  gchar *s;
-  gchar *p;
+  quark = g_quark_from_static_string ("g-dbus-error-quark");
 
-  g_return_val_if_fail (error != NULL, FALSE);
-
-  if (error->domain != G_DBUS_ERROR ||
-      error->code != G_DBUS_ERROR_REMOTE_EXCEPTION)
-    return FALSE;
-
-  if (out_name != NULL)
-    *out_name = NULL;
-  if (out_message != NULL)
-    *out_message = NULL;
-
-  s = strrchr (error->message, ' ');
-  if (s == NULL || s == error->message)
+  if (g_once_init_enter (&has_registered__volatile))
     {
-      g_warning ("message '%s' is malformed", error->message);
-      goto out;
-    }
-  if (out_message != NULL)
-    *out_message = g_uri_unescape_string (s + 1, NULL);
+      guint n;
+      static const struct
+      {
+        gint error_code;
+        const gchar *dbus_error_name;
+      } error_mapping[] =
+          {
+            {G_DBUS_ERROR_DBUS_FAILED,                      "org.freedesktop.DBus.Error.Failed"},
+            {G_DBUS_ERROR_NO_MEMORY,                        "org.freedesktop.DBus.Error.NoMemory"},
+            {G_DBUS_ERROR_SERVICE_UNKNOWN,                  "org.freedesktop.DBus.Error.ServiceUnknown"},
+            {G_DBUS_ERROR_NAME_HAS_NO_OWNER,                "org.freedesktop.DBus.Error.NameHasNoOwner"},
+            {G_DBUS_ERROR_NO_REPLY,                         "org.freedesktop.DBus.Error.NoReply"},
+            {G_DBUS_ERROR_IO_ERROR,                         "org.freedesktop.DBus.Error.IOError"},
+            {G_DBUS_ERROR_BAD_ADDRESS,                      "org.freedesktop.DBus.Error.BadAddress"},
+            {G_DBUS_ERROR_NOT_SUPPORTED,                    "org.freedesktop.DBus.Error.NotSupported"},
+            {G_DBUS_ERROR_LIMITS_EXCEEDED,                  "org.freedesktop.DBus.Error.LimitsExceeded"},
+            {G_DBUS_ERROR_ACCESS_DENIED,                    "org.freedesktop.DBus.Error.AccessDenied"},
+            {G_DBUS_ERROR_AUTH_FAILED,                      "org.freedesktop.DBus.Error.AuthFailed"},
+            {G_DBUS_ERROR_NO_SERVER,                        "org.freedesktop.DBus.Error.NoServer"},
+            {G_DBUS_ERROR_TIMEOUT,                          "org.freedesktop.DBus.Error.Timeout"},
+            {G_DBUS_ERROR_NO_NETWORK,                       "org.freedesktop.DBus.Error.NoNetwork"},
+            {G_DBUS_ERROR_ADDRESS_IN_USE,                   "org.freedesktop.DBus.Error.AddressInUse"},
+            {G_DBUS_ERROR_DISCONNECTED,                     "org.freedesktop.DBus.Error.Disconnected"},
+            {G_DBUS_ERROR_INVALID_ARGS,                     "org.freedesktop.DBus.Error.InvalidArgs"},
+            {G_DBUS_ERROR_FILE_NOT_FOUND,                   "org.freedesktop.DBus.Error.FileNotFound"},
+            {G_DBUS_ERROR_FILE_EXISTS,                      "org.freedesktop.DBus.Error.FileExists"},
+            {G_DBUS_ERROR_UNKNOWN_METHOD,                   "org.freedesktop.DBus.Error.UnknownMethod"},
+            {G_DBUS_ERROR_TIMED_OUT,                        "org.freedesktop.DBus.Error.TimedOut"},
+            {G_DBUS_ERROR_MATCH_RULE_NOT_FOUND,             "org.freedesktop.DBus.Error.MatchRuleNotFound"},
+            {G_DBUS_ERROR_MATCH_RULE_INVALID,               "org.freedesktop.DBus.Error.MatchRuleInvalid"},
+            {G_DBUS_ERROR_SPAWN_EXEC_FAILED,                "org.freedesktop.DBus.Error.Spawn.ExecFailed"},
+            {G_DBUS_ERROR_SPAWN_FORK_FAILED,                "org.freedesktop.DBus.Error.Spawn.ForkFailed"},
+            {G_DBUS_ERROR_SPAWN_CHILD_EXITED,               "org.freedesktop.DBus.Error.Spawn.ChildExited"},
+            {G_DBUS_ERROR_SPAWN_CHILD_SIGNALED,             "org.freedesktop.DBus.Error.Spawn.ChildSignaled"},
+            {G_DBUS_ERROR_SPAWN_FAILED,                     "org.freedesktop.DBus.Error.Spawn.Failed"},
+            {G_DBUS_ERROR_SPAWN_SETUP_FAILED,               "org.freedesktop.DBus.Error.Spawn.FailedToSetup"},
+            {G_DBUS_ERROR_SPAWN_CONFIG_INVALID,             "org.freedesktop.DBus.Error.Spawn.ConfigInvalid"},
+            {G_DBUS_ERROR_SPAWN_SERVICE_INVALID,            "org.freedesktop.DBus.Error.Spawn.ServiceNotValid"},
+            {G_DBUS_ERROR_SPAWN_SERVICE_NOT_FOUND,          "org.freedesktop.DBus.Error.Spawn.ServiceNotFound"},
+            {G_DBUS_ERROR_SPAWN_PERMISSIONS_INVALID,        "org.freedesktop.DBus.Error.Spawn.PermissionsInvalid"},
+            {G_DBUS_ERROR_SPAWN_FILE_INVALID,               "org.freedesktop.DBus.Error.Spawn.FileInvalid"},
+            {G_DBUS_ERROR_SPAWN_NO_MEMORY,                  "org.freedesktop.DBus.Error.Spawn.NoMemory"},
+            {G_DBUS_ERROR_UNIX_PROCESS_ID_UNKNOWN,          "org.freedesktop.DBus.Error.UnixProcessIdUnknown"},
+            {G_DBUS_ERROR_INVALID_SIGNATURE,                "org.freedesktop.DBus.Error.InvalidSignature"},
+            {G_DBUS_ERROR_INVALID_FILE_CONTENT,             "org.freedesktop.DBus.Error.InvalidFileContent"},
+            {G_DBUS_ERROR_SELINUX_SECURITY_CONTEXT_UNKNOWN, "org.freedesktop.DBus.Error.SELinuxSecurityContextUnknown"},
+            {G_DBUS_ERROR_ADT_AUDIT_DATA_UNKNOWN,           "org.freedesktop.DBus.Error.AdtAuditDataUnknown"},
+            {G_DBUS_ERROR_OBJECT_PATH_IN_USE,               "org.freedesktop.DBus.Error.ObjectPathInUse"},
+            {-1, NULL}
+          };
 
-  p = s;
-  s--;
-  while (*s != ' ')
-    {
-      if (s < error->message)
+      for (n = 0; error_mapping[n].dbus_error_name != NULL; n++)
         {
-          g_warning ("message '%s' is malformed.", error->message);
-          goto out;
+          g_assert (g_dbus_error_register_error (quark, /* Can't use G_DBUS_ERROR here because of reentrancy ;-) */
+                                                 error_mapping[n].error_code,
+                                                 error_mapping[n].dbus_error_name));
         }
-      s--;
-    }
-  if (out_name != NULL)
-    *out_name = g_uri_unescape_segment (s + 1, p, NULL);
+      g_assert (n == _G_DBUS_ERROR_MAX_DBUS_ERROR - 1000);
 
- out:
-
-  return TRUE;
-}
-
-/**
- * _g_dbus_error_new_for_gerror:
- * @error: A #GError.
- * @dbus_error: Return location for #DBusError.
- *
- * Utility function to map a #GError to a #DBusError by getting the
- * D-Bus error name from the nick of the element of the registered
- * enumeration type for the error domain for @error.
- *
- * If the nick is not a valid D-Bus error name or the enumeration for
- * the error domain for @error is not registered with the type system,
- * the returned #DBusError will be of the form
- * org.gtk.GDBus.UnmappedGError.Quark_HEXENCODED_QUARK_NAME_.Code_ERROR_CODE. This
- * allows other GDBus applications to map the #DBusError back to the
- * #GError using _g_dbus_error_new_for_dbus_error().
- *
- * This function is intended for use by object mappings only.
- */
-void
-_g_dbus_error_new_for_gerror (GError    *error,
-                              DBusError *dbus_error)
-{
-  const gchar *domain_as_string;
-  gchar *error_name;
-  GString *s;
-  guint n;
-  GType enum_type;
-
-  error_name = NULL;
-
-  /* We can't assume that two different processes use the same Quark integer
-   * value for a given string. So send the string across the wire.
-   */
-  domain_as_string = g_quark_to_string (error->domain);
-
-  /* Also use the nick-name to produce error names compatible with
-   * non-GLib applications; note that GDBusError may not have
-   * been initialized so special case that.
-   */
-  if (strcmp (domain_as_string, "GDBusError") == 0)
-    enum_type = G_TYPE_DBUS_ERROR;
-  else
-    enum_type = g_type_from_name (domain_as_string);
-  if (enum_type != 0)
-    {
-      GEnumClass *enum_klass;
-      GEnumValue *enum_value;
-
-      enum_klass = g_type_class_ref (enum_type);
-      enum_value = g_enum_get_value (enum_klass, error->code);
-      g_type_class_unref (enum_klass);
-      if (enum_value != NULL)
-        {
-          /* TODO: it's the users own problem if value_nick isn't a proper D-Bus
-           * error name. Or is it? We should probably validate it...
-           */
-          error_name = g_strdup (enum_value->value_nick);
-          goto out;
-        }
+      g_once_init_leave (&has_registered__volatile, 1);
     }
 
-  /* We can't make a lot of assumptions about what domain_as_string
-   * looks like and D-Bus is extremely picky about error names so
-   * hex-encode it for transport across the wire.
-   */
-
-  s = g_string_new ("org.gtk.GDBus.UnmappedGError.Quark0x");
-  for (n = 0; domain_as_string[n] != 0; n++)
-    {
-      guint nibble_top;
-      guint nibble_bottom;
-
-      nibble_top = ((int) domain_as_string[n]) >> 4;
-      nibble_bottom = ((int) domain_as_string[n]) & 0x0f;
-
-      if (nibble_top < 10)
-        nibble_top += '0';
-      else
-        nibble_top += 'a' - 10;
-
-      if (nibble_bottom < 10)
-        nibble_bottom += '0';
-      else
-        nibble_bottom += 'a' - 10;
-
-      g_string_append_c (s, nibble_top);
-      g_string_append_c (s, nibble_bottom);
-    }
-  g_string_append_printf (s, ".Code%d", error->code);
-
-  error_name = g_string_free (s, FALSE);
-
- out:
-  dbus_error_init (dbus_error);
-  dbus_set_error (dbus_error,
-                  error_name,
-                  "%s",
-                  error->message);
+  return quark;
 }
 
 static gboolean
@@ -290,213 +192,540 @@ _g_dbus_error_decode_gerror (const gchar *dbus_name,
   return ret;
 }
 
-/**
- * _g_dbus_error_new_for_dbus_error_valist:
- * @dbus_error: A #DBusError.
- * @error_types: %NULL or a #G_TYPE_INVALID terminated array of #GType<!-- -->s for error domains to consider.
- * @prepend_format: %NULL or format for message to prepend to the D-Bus error message.
- * @va_args: Arguments for @prepend_format.
- *
- * Like _g_dbus_error_new_for_dbus_error() but intended for language
- * bindings.
- *
- * This function is intended for use by object mappings only.
- *
- * Returns: A newly allocated #GError. Free with g_error_free().
- **/
-GError *
-_g_dbus_error_new_for_dbus_error_valist (DBusError   *dbus_error,
-                                        GType       *error_types,
-                                        const gchar *prepend_format,
-                                        va_list      va_args)
+/* ---------------------------------------------------------------------------------------------------- */
+
+typedef struct
 {
-  GString *literal_error;
-  gchar *name_escaped;
-  gchar *message_escaped;
-  GError *error;
   GQuark error_domain;
-  gint error_code;
-  GEnumClass *enum_klass;
-  GEnumValue *enum_value;
-  guint n;
+  gint   error_code;
+} QuarkCodePair;
 
-  g_return_val_if_fail (dbus_error != NULL, NULL);
+static guint
+quark_code_pair_hash_func (const QuarkCodePair *pair)
+{
+  gint val;
+  val = pair->error_domain + pair->error_code;
+  return g_int_hash (&val);
+}
 
-  literal_error = g_string_new (NULL);
-  if (prepend_format != NULL)
-    g_string_append_vprintf (literal_error, prepend_format, va_args);
-  g_string_append (literal_error, dbus_error->message);
+static gboolean
+quark_code_pair_equal_func (const QuarkCodePair *a,
+                            const QuarkCodePair *b)
+{
+  return (a->error_domain == b->error_domain) && (a->error_code == b->error_code);
+}
 
-  /* Unmapped GError's from GLib peers are encoded in a special format can be mapped
-   * back to the right domain and code; see _g_dbus_error_encode_gerror()
-   */
-  if (_g_dbus_error_decode_gerror (dbus_error->name, &error_domain, &error_code))
-    goto mapped;
+typedef struct
+{
+  QuarkCodePair pair;
+  gchar *dbus_error_name;
+} RegisteredError;
 
+static void
+registered_error_free (RegisteredError *re)
+{
+  g_free (re->dbus_error_name);
+  g_free (re);
+}
+
+G_LOCK_DEFINE_STATIC (error_lock);
+
+/* maps from QuarkCodePair* -> RegisteredError* */
+static GHashTable *quark_code_pair_to_re = NULL;
+
+/* maps from gchar* -> RegisteredError* */
+static GHashTable *dbus_error_name_to_re = NULL;
+
+/**
+ * g_dbus_error_register_error:
+ * @error_domain: A #GQuark for a error domain.
+ * @error_code: An error code.
+ * @dbus_error_name: A D-Bus error name.
+ *
+ * Creates an association to map between @dbus_error_name and
+ * #GError<!-- -->s specified by @error_domain and @error_code.
+ *
+ * This is typically done in the routine that returns the #GQuark for
+ * an error domain.
+ *
+ * Returns: %TRUE unless an association already existed.
+ */
+gboolean
+g_dbus_error_register_error (GQuark       error_domain,
+                             gint         error_code,
+                             const gchar *dbus_error_name)
+{
+  gboolean ret;
+  QuarkCodePair pair;
+  RegisteredError *re;
+
+  g_return_val_if_fail (dbus_error_name != NULL, FALSE);
+
+  ret = FALSE;
+
+  G_LOCK (error_lock);
+
+  if (quark_code_pair_to_re == NULL)
+    {
+      g_assert (dbus_error_name_to_re == NULL); /* check invariant */
+      quark_code_pair_to_re = g_hash_table_new ((GHashFunc) quark_code_pair_hash_func,
+                                                (GEqualFunc) quark_code_pair_equal_func);
+      dbus_error_name_to_re = g_hash_table_new_full (g_str_hash,
+                                                     g_str_equal,
+                                                     NULL,
+                                                     (GDestroyNotify) registered_error_free);
+    }
+
+  if (g_hash_table_lookup (dbus_error_name_to_re, dbus_error_name) != NULL)
+    goto out;
+
+  pair.error_domain = error_domain;
+  pair.error_code = error_code;
+
+  if (g_hash_table_lookup (quark_code_pair_to_re, &pair) != NULL)
+    goto out;
+
+  re = g_new0 (RegisteredError, 1);
+  re->pair = pair;
+  re->dbus_error_name = g_strdup (dbus_error_name);
+
+  g_hash_table_insert (quark_code_pair_to_re, &(re->pair), re);
+  g_hash_table_insert (dbus_error_name_to_re, re->dbus_error_name, re);
+
+  ret = TRUE;
+
+ out:
+  G_UNLOCK (error_lock);
+  return ret;
+}
+
+/**
+ * g_dbus_error_unregister_error:
+ * @error_domain: A #GQuark for a error domain.
+ * @error_code: An error code.
+ * @dbus_error_name: A D-Bus error name.
+ *
+ * Destroys an association previously set up with g_dbus_error_register_error().
+ *
+ * Returns: %TRUE if the association was found and destroyed, %FALSE otherwise.
+ */
+gboolean
+g_dbus_error_unregister_error (GQuark       error_domain,
+                               gint         error_code,
+                               const gchar *dbus_error_name)
+{
+  gboolean ret;
+  RegisteredError *re;
+  guint hash_size;
+
+  ret = FALSE;
+
+  G_LOCK (error_lock);
+
+  if (dbus_error_name_to_re == NULL)
+    {
+      g_assert (quark_code_pair_to_re == NULL); /* check invariant */
+      goto out;
+    }
+
+  re = g_hash_table_lookup (dbus_error_name_to_re, dbus_error_name);
+  if (re == NULL)
+    {
+      QuarkCodePair pair;
+      pair.error_domain = error_domain;
+      pair.error_code = error_code;
+      g_assert (g_hash_table_lookup (quark_code_pair_to_re, &pair) == NULL); /* check invariant */
+      goto out;
+    }
+  g_assert (g_hash_table_lookup (quark_code_pair_to_re, &(re->pair)) == re); /* check invariant */
+
+  g_assert (g_hash_table_remove (quark_code_pair_to_re, &(re->pair)));
+  g_assert (g_hash_table_remove (dbus_error_name_to_re, re));
+
+  /* destroy hashes if empty */
+  hash_size = g_hash_table_size (dbus_error_name_to_re);
+  if (hash_size == 0)
+    {
+      g_assert (g_hash_table_size (quark_code_pair_to_re) == 0); /* check invariant */
+
+      g_hash_table_unref (dbus_error_name_to_re);
+      dbus_error_name_to_re = NULL;
+      g_hash_table_unref (quark_code_pair_to_re);
+      quark_code_pair_to_re = NULL;
+    }
+  else
+    {
+      g_assert (g_hash_table_size (quark_code_pair_to_re) == hash_size); /* check invariant */
+    }
+
+ out:
+  G_UNLOCK (error_lock);
+  return ret;
+}
+
+/* ---------------------------------------------------------------------------------------------------- */
+
+/**
+ * g_dbus_error_get_dbus_error_name:
+ * @error: A #GError.
+ *
+ * Gets the D-Bus error name used for @error, if any.
+ *
+ * This function is guaranteed to return a D-Bus error name for all #GError<!-- -->s returned from
+ * functions handling remote method calls (e.g. g_dbus_connection_invoke_method_with_reply_finish())
+ * unless g_dbus_error_strip() has been used on @error.
+ *
+ * Returns: An allocated string or %NULL if the D-Bus error name could not be found. Free with g_free().
+ */
+gchar *
+g_dbus_error_get_dbus_error_name (const GError *error)
+{
+  RegisteredError *re;
+  gchar *ret;
+  volatile GQuark error_domain;
+
+  g_return_val_if_fail (error != NULL, NULL);
+
+  /* Ensure that the G_DBUS_ERROR is registered using g_dbus_error_register_error() */
   error_domain = G_DBUS_ERROR;
 
-  /* Otherwise lookup our registered error types
-   *
-   *   TODO: reading the GObject sources, g_enum_get_value_by_nick is O(n); maybe cache in a hash
-   *         table if performance is a concern? It probably isn't; errors should be rare...
-   *
-   * First check our built-in error type...
-   */
-  enum_klass = g_type_class_ref (G_TYPE_DBUS_ERROR);
-  enum_value = g_enum_get_value_by_nick (enum_klass, dbus_error->name);
-  g_type_class_unref (enum_klass);
-  if (enum_value != NULL)
+  ret = NULL;
+
+  G_LOCK (error_lock);
+
+  re = NULL;
+  if (quark_code_pair_to_re != NULL)
     {
-      error_code = enum_value->value;
-      goto mapped;
+      QuarkCodePair pair;
+      pair.error_domain = error->domain;
+      pair.error_code = error->code;
+      g_assert (dbus_error_name_to_re != NULL); /* check invariant */
+      re = g_hash_table_lookup (quark_code_pair_to_re, &pair);
     }
-  /* then check all error domains the user passed in (via e.g. g_dbus_connection_send_message_with_reply()) */
-  for (n = 0; error_types != NULL && error_types[n] != G_TYPE_INVALID; n++)
+
+  if (re != NULL)
     {
-      enum_klass = g_type_class_ref (error_types[n]);
-      enum_value = g_enum_get_value_by_nick (enum_klass, dbus_error->name);
-      g_type_class_unref (enum_klass);
-      if (enum_value != NULL)
+      ret = g_strdup (re->dbus_error_name);
+    }
+  else
+    {
+      if (g_str_has_prefix (error->message, "GDBus.Error:"))
         {
-          error_domain = g_quark_from_static_string (g_type_name (error_types[n]));
-          error_code = enum_value->value;
-          goto mapped;
+          const gchar *begin;
+          const gchar *end;
+          begin = error->message + sizeof ("GDBus.Error:") -1;
+          end = strstr (begin, ":");
+          if (end != NULL && end[1] == ' ')
+            {
+              ret = g_strndup (begin, end - begin);
+            }
         }
     }
 
-  /* Otherwise we fall back to returning a G_DBUS_ERROR_REMOTE_EXCEPTION error with enough
-   * detail such that the D-Bus error name and error message can be decoded using the
-   * g_dbus_error_get_remote_exception() function.
-   */
-  error_code = G_DBUS_ERROR_REMOTE_EXCEPTION;
+  G_UNLOCK (error_lock);
 
-  name_escaped = g_uri_escape_string (dbus_error->name, NULL, TRUE);
-  message_escaped = g_uri_escape_string (dbus_error->message, NULL, TRUE);
+  return ret;
+}
 
-  g_string_append_c (literal_error, ' ');
-  g_string_append (literal_error, name_escaped);
-  g_string_append_c (literal_error, ' ');
-  g_string_append (literal_error, message_escaped);
+/* ---------------------------------------------------------------------------------------------------- */
 
- mapped:
+/**
+ * g_dbus_error_new_for_dbus_error:
+ * @dbus_error_name: D-Bus error name.
+ * @dbus_error_message: D-Bus error message.
+ *
+ * Creates a #GError based on the contents of @dbus_error_name and
+ * @dbus_error_message.
+ *
+ * Errors registered with g_dbus_error_register_error() will be looked
+ * up using @dbus_error_name and if a match is found, the error domain
+ * and code is used. Applications can use g_dbus_error_get_dbus_error_name()
+ * to recover @dbus_error_name.
+ *
+ * If a match against a registered error is not found and the D-Bus
+ * error name is in a form as returned by g_dbus_error_encode_gerror()
+ * (e.g. org.gtk.GDBus.UnmappedGError.Quark_HEXENCODED_QUARK_NAME_.Code_ERROR_CODE).
+ * the error domain and code encoded in the name is used to
+ * create the #GError. Also, @dbus_error_name is added to the error message
+ * such that it can be recovered with g_dbus_error_get_dbus_error_name().
+ *
+ * Otherwise, a #GError with the error code %G_DBUS_ERROR_REMOTE_EXCEPTION
+ * in the #G_DBUS_ERROR error domain is returned. Also, @dbus_error_name is
+ * added to the error message such that it can be recovered with
+ * g_dbus_error_get_dbus_error_name().
+ *
+ * In all three cases, @dbus_error_name can always be recovered from the
+ * returned #GError using the g_dbus_error_get_dbus_error_name() function
+ * (unless g_dbus_error_strip() hasn't been used on the returned error).
+ *
+ * This function is typically only used in object mappings to prepare
+ * #GError instances for applications. Regular applications should not use
+ * it.
+ *
+ * Returns: An allocated #GError. Free with g_error_free().
+ */
+GError *
+g_dbus_error_new_for_dbus_error (const gchar *dbus_error_name,
+                                 const gchar *dbus_error_message)
+{
+  GError *error;
+  RegisteredError *re;
+  volatile GQuark error_domain;
 
-  error = g_error_new_literal (error_domain,
+  g_return_val_if_fail (dbus_error_name != NULL, NULL);
+  g_return_val_if_fail (dbus_error_message != NULL, NULL);
+
+  /* Ensure that the G_DBUS_ERROR is registered using g_dbus_error_register_error() */
+  error_domain = G_DBUS_ERROR;
+
+  G_LOCK (error_lock);
+
+  re = NULL;
+  if (dbus_error_name_to_re != NULL)
+    {
+      g_assert (quark_code_pair_to_re != NULL); /* check invariant */
+      re = g_hash_table_lookup (dbus_error_name_to_re, dbus_error_name);
+    }
+
+  if (re != NULL)
+    {
+      error = g_error_new_literal (re->pair.error_domain,
+                                   re->pair.error_code,
+                                   dbus_error_message);
+    }
+  else
+    {
+      GQuark error_domain;
+      gint error_code;
+
+      if (_g_dbus_error_decode_gerror (dbus_error_name,
+                                       &error_domain,
+                                       &error_code))
+        {
+          error = g_error_new (error_domain,
                                error_code,
-                               literal_error->str);
+                               "GDBus.Error:%s: %s",
+                               dbus_error_name,
+                               dbus_error_message);
+        }
+      else
+        {
+          error = g_error_new (G_DBUS_ERROR,
+                               G_DBUS_ERROR_REMOTE_EXCEPTION,
+                               "GDBus.Error:%s: %s",
+                               dbus_error_name,
+                               dbus_error_message);
+        }
+    }
 
-  g_string_free (literal_error, TRUE);
-
+  G_UNLOCK (error_lock);
   return error;
 }
 
 /**
- * _g_dbus_error_new_for_dbus_error:
- * @dbus_error: A #DBusError.
- * @error_types: %NULL or a #G_TYPE_INVALID terminated array of #GType<!-- -->s for error domains to consider.
- * @prepend_format: %NULL or format for message to prepend to the D-Bus error message.
- * @...: Arguments for @prepend_format.
+ * g_dbus_error_set_dbus_error:
+ * @error: A pointer to a #GError or %NULL.
+ * @dbus_error_name: D-Bus error name.
+ * @dbus_error_message: D-Bus error message.
+ * @format: printf()-style format to prepend to @dbus_error_message or %NULL.
+ * @...: Arguments for @format.
  *
- * Utility function to map a #DBusError to a #GError by matching the
- * name of @dbus_error with the nick names in the enumerations
- * specified by the @error_types array.
- *
- * This function also handles unmapped #GError<!-- -->'s as described
- * in _g_dbus_error_new_for_gerror().
- *
- * If no suitable error code is found, then
- * #G_DBUS_ERROR_REMOTE_EXCEPTION in the #G_DBUS_ERROR domain is used
- * and an encoded form of the name and message from @dbus_error is
- * appended to the message text such that the user can get this back
- * via g_dbus_error_get_remote_exception().
- *
- * This function is intended for use by object mappings only.
- *
- * Returns: A newly allocated #GError. Free with g_error_free().
- */
-GError *
-_g_dbus_error_new_for_dbus_error (DBusError   *dbus_error,
-                                 GType       *error_types,
-                                 const gchar *prepend_format,
-                                 ...)
-{
-  va_list va_args;
-  GError *new_error;
-
-  va_start (va_args, prepend_format);
-  new_error = _g_dbus_error_new_for_dbus_error_valist (dbus_error,
-                                                      error_types,
-                                                      prepend_format,
-                                                      va_args);
-  va_end (va_args);
-
-  return new_error;
-}
-
-/**
- * _g_dbus_error_set_dbus_error:
- * @error: %NULL or a #GError to set.
- * @dbus_error: A #DBusError.
- * @error_types: %NULL or a #G_TYPE_INVALID terminated array of #GType<!-- -->s for error domains to consider.
- * @prepend_format: %NULL or format for message to prepend to the D-Bus error message.
- * @...: Arguments for @prepend_format.
- *
- * Does nothing if @error is %NULL; if @error is non-%NULL, then
- * *@error must be NULL. A new #GError is created and assigned to
- * *@error using _g_dbus_error_new_for_dbus_error().
- *
- * This function is intended for use by object mappings only.
+ * Does nothing if @error is %NULL. Otherwise sets *@error to
+ * a new #GError created with g_dbus_error_new_for_dbus_error()
+ * with @dbus_error_message prepend with @format (unless %NULL).
  */
 void
-_g_dbus_error_set_dbus_error (GError      **error,
-                             DBusError    *dbus_error,
-                             GType        *error_types,
-                             const gchar  *prepend_format,
+g_dbus_error_set_dbus_error (GError      **error,
+                             const gchar  *dbus_error_name,
+                             const gchar  *dbus_error_message,
+                             const gchar  *format,
                              ...)
 {
-  va_list va_args;
-  GError *new_error;
+  g_return_if_fail (dbus_error_name != NULL);
+  g_return_if_fail (dbus_error_message != NULL);
 
   if (error == NULL)
     return;
 
-  va_start (va_args, prepend_format);
-  new_error = _g_dbus_error_new_for_dbus_error_valist (dbus_error,
-                                                      error_types,
-                                                      prepend_format,
-                                                      va_args);
-  *error = new_error;
-  va_end (va_args);
+  if (format == NULL)
+    {
+      *error = g_dbus_error_new_for_dbus_error (dbus_error_name, dbus_error_message);
+    }
+  else
+    {
+      va_list var_args;
+      va_start (var_args, format);
+      g_dbus_error_set_dbus_error_valist (error,
+                                          dbus_error_name,
+                                          dbus_error_message,
+                                          format,
+                                          var_args);
+      va_end (var_args);
+    }
 }
 
 /**
- * _g_dbus_error_set_dbus_error_valist:
- * @error: %NULL or a #GError to set.
- * @dbus_error: A #DBusError.
- * @error_types: %NULL or a #G_TYPE_INVALID terminated array of #GType<!-- -->s for error domains to consider.
- * @prepend_format: %NULL or format for message to prepend to the D-Bus error message.
- * @va_args: Arguments for @prepend_format.
+ * g_dbus_error_set_dbus_error_valist:
+ * @error: A pointer to a #GError or %NULL.
+ * @dbus_error_name: D-Bus error name.
+ * @dbus_error_message: D-Bus error message.
+ * @format: printf()-style format to prepend to @dbus_error_message or %NULL.
+ * @var_args: Arguments for @format.
  *
- * Like _g_dbus_error_set_dbus_error() but intended for language
- * bindings.
- *
- * This function is intended for use by object mappings only.
+ * Like g_dbus_error_set_dbus_error() but intended for language bindings.
  */
 void
-_g_dbus_error_set_dbus_error_valist (GError      **error,
-                                    DBusError    *dbus_error,
-                                    GType        *error_types,
-                                    const gchar  *prepend_format,
-                                    va_list       va_args)
+g_dbus_error_set_dbus_error_valist (GError      **error,
+                                    const gchar  *dbus_error_name,
+                                    const gchar  *dbus_error_message,
+                                    const gchar  *format,
+                                    va_list       var_args)
 {
-  GError *new_error;
+  g_return_if_fail (dbus_error_name != NULL);
+  g_return_if_fail (dbus_error_message != NULL);
 
   if (error == NULL)
     return;
 
-  new_error = _g_dbus_error_new_for_dbus_error_valist (dbus_error,
-                                                      error_types,
-                                                      prepend_format,
-                                                      va_args);
-  *error = new_error;
+  if (format != NULL)
+    {
+      gchar *message;
+      gchar *s;
+      message = g_strdup_vprintf (format, var_args);
+      s = g_strdup_printf ("%s: %s", message, dbus_error_message);
+      *error = g_dbus_error_new_for_dbus_error (dbus_error_name, s);
+      g_free (s);
+      g_free (message);
+    }
+  else
+    {
+      *error = g_dbus_error_new_for_dbus_error (dbus_error_name, dbus_error_message);
+    }
 }
 
+/**
+ * g_dbus_error_strip:
+ * @error: A #GError.
+ *
+ * Looks for extra information in the error message used to recover
+ * the D-Bus error name and strips it if found. If stripped, the
+ * message field in @error will correspond exactly to what was
+ * received on the wire.
+ *
+ * This is typically used when presenting errors to the end user.
+ *
+ * Returns: %TRUE if information was stripped, %FALSE otherwise.
+ */
+gboolean
+g_dbus_error_strip (GError *error)
+{
+  gboolean ret;
+
+  g_return_val_if_fail (error != NULL, FALSE);
+
+  ret = FALSE;
+
+  if (g_str_has_prefix (error->message, "GDBus.Error:"))
+    {
+      const gchar *begin;
+      const gchar *end;
+      gchar *new_message;
+
+      begin = error->message + sizeof ("GDBus.Error:") -1;
+      end = strstr (begin, ":");
+      if (end != NULL && end[1] == ' ')
+        {
+          new_message = g_strdup (end + 2);
+          g_free (error->message);
+          error->message = new_message;
+          ret = TRUE;
+        }
+    }
+
+  return ret;
+}
+
+/**
+ * g_dbus_error_encode_gerror:
+ * @error: A #GError.
+ *
+ * Creates a D-Bus error name to use for @error. If @error matches
+ * a registered error (cf. g_dbus_register_error()), the corresponding
+ * D-Bus error name will be returned.
+ *
+ * Otherwise the a name of the form
+ * org.gtk.GDBus.UnmappedGError.Quark_HEXENCODED_QUARK_NAME_.Code_ERROR_CODE
+ * will be used. This allows other GDBus applications to map the error
+ * on the wire back to a #GError using g_dbus_error_new_for_dbus_error().
+ *
+ * This function is typically only used in object mappings to put a
+ * #GError on the wire. Regular applications should not use it.
+ *
+ * Returns: A D-Bus error name (never %NULL). Free with g_free().
+ */
+gchar *
+g_dbus_error_encode_gerror (const GError *error)
+{
+  RegisteredError *re;
+  gchar *error_name;
+  volatile GQuark error_domain;
+
+  g_return_val_if_fail (error != NULL, NULL);
+
+  /* Ensure that the G_DBUS_ERROR is registered using g_dbus_error_register_error() */
+  error_domain = G_DBUS_ERROR;
+
+  error_name = NULL;
+
+  G_LOCK (error_lock);
+  re = NULL;
+  if (quark_code_pair_to_re != NULL)
+    {
+      QuarkCodePair pair;
+      pair.error_domain = error->domain;
+      pair.error_code = error->code;
+      g_assert (dbus_error_name_to_re != NULL); /* check invariant */
+      re = g_hash_table_lookup (quark_code_pair_to_re, &pair);
+    }
+  if (re != NULL)
+    {
+      error_name = g_strdup (re->dbus_error_name);
+      G_UNLOCK (error_lock);
+    }
+  else
+    {
+      const gchar *domain_as_string;
+      GString *s;
+      guint n;
+
+      G_UNLOCK (error_lock);
+
+      /* We can't make a lot of assumptions about what domain_as_string
+       * looks like and D-Bus is extremely picky about error names so
+       * hex-encode it for transport across the wire.
+       */
+      domain_as_string = g_quark_to_string (error->domain);
+      s = g_string_new ("org.gtk.GDBus.UnmappedGError.Quark0x");
+      for (n = 0; domain_as_string[n] != 0; n++)
+        {
+          guint nibble_top;
+          guint nibble_bottom;
+          nibble_top = ((int) domain_as_string[n]) >> 4;
+          nibble_bottom = ((int) domain_as_string[n]) & 0x0f;
+          if (nibble_top < 10)
+            nibble_top += '0';
+          else
+            nibble_top += 'a' - 10;
+          if (nibble_bottom < 10)
+            nibble_bottom += '0';
+          else
+            nibble_bottom += 'a' - 10;
+          g_string_append_c (s, nibble_top);
+          g_string_append_c (s, nibble_bottom);
+        }
+      g_string_append_printf (s, ".Code%d", error->code);
+      error_name = g_string_free (s, FALSE);
+    }
+
+  return error_name;
+}

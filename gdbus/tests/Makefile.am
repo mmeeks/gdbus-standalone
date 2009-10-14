@@ -26,6 +26,7 @@ TEST_PROGS += proxy
 TEST_PROGS += introspection
 TEST_PROGS += threading
 TEST_PROGS += export
+TEST_PROGS += error
 
 connection_SOURCES = connection.c sessionbus.c sessionbus.h tests.h tests.c
 connection_LDADD = $(progs_ldadd)
@@ -45,3 +46,7 @@ threading_LDADD = $(progs_ldadd)
 export_SOURCES = export.c sessionbus.c sessionbus.h tests.h tests.c
 export_CFLAGS = $(DBUS1_CFLAGS)
 export_LDADD = $(progs_ldadd)
+
+error_SOURCES = error.c sessionbus.c sessionbus.h tests.h tests.c
+error_CFLAGS = $(DBUS1_CFLAGS)
+error_LDADD = $(progs_ldadd)

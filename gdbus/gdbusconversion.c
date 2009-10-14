@@ -432,10 +432,10 @@ _g_dbus_dbus_1_to_gvariant (DBusMessage  *message,
   dbus_error_init (&dbus_error);
   if (dbus_set_error_from_message (&dbus_error, message))
     {
-      _g_dbus_error_set_dbus_error (error,
-                                    &dbus_error,
-                                    NULL,
-                                    NULL);
+      g_dbus_error_set_dbus_error (error,
+                                   dbus_error.name,
+                                   dbus_error.message,
+                                   NULL);
       dbus_error_free (&dbus_error);
       goto out;
     }

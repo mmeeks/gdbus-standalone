@@ -233,6 +233,9 @@ typedef enum
   G_DBUS_ERROR_SELINUX_SECURITY_CONTEXT_UNKNOWN, /*< nick=org.freedesktop.DBus.Error.SELinuxSecurityContextUnknown >*/
   G_DBUS_ERROR_ADT_AUDIT_DATA_UNKNOWN,           /*< nick=org.freedesktop.DBus.Error.AdtAuditDataUnknown >*/
   G_DBUS_ERROR_OBJECT_PATH_IN_USE,               /*< nick=org.freedesktop.DBus.Error.ObjectPathInUse >*/
+
+  /* This is a private member - the value is subject to change */
+  _G_DBUS_ERROR_MAX_DBUS_ERROR                   /*< skip >*/
 } GDBusError;
 
 /**
