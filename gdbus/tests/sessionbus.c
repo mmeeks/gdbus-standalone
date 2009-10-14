@@ -154,7 +154,7 @@ session_bus_up_with_address (const gchar *given_address)
                           "  </policy>\n");
   g_string_append        (config_file_contents, "</busconfig>\n");
 
-  if (write (config_file_fd, config_file_contents->str, config_file_contents->len) != config_file_contents->len)
+  if (write (config_file_fd, config_file_contents->str, config_file_contents->len) != (gssize) config_file_contents->len)
     {
       g_warning ("Error writing %d bytes to config file: %m", (gint) config_file_contents->len);
       g_string_free (config_file_contents, TRUE);

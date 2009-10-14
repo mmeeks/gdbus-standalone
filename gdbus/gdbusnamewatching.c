@@ -30,10 +30,6 @@
 #include "gdbuserror.h"
 #include "gdbusprivate.h"
 #include "gdbusconnection.h"
-#include "gdbusconnection-lowlevel.h"
-
-
-#include "gdbusalias.h"
 
 /**
  * SECTION:gdbusnamewatching
@@ -95,7 +91,7 @@ client_unref (Client *client)
       if (client->connection != NULL)
         {
           if (client->name_owner_changed_subscription_id > 0)
-            g_dbus_connection_dbus_1_signal_unsubscribe (client->connection, client->name_owner_changed_subscription_id);
+            g_dbus_connection_signal_unsubscribe (client->connection, client->name_owner_changed_subscription_id);
           if (client->disconnected_signal_handler_id > 0)
             g_signal_handler_disconnect (client->connection, client->disconnected_signal_handler_id);
           g_object_unref (client->connection);
@@ -149,7 +145,7 @@ on_connection_disconnected (GDBusConnection *connection,
   Client *client = user_data;
 
   if (client->name_owner_changed_subscription_id > 0)
-    g_dbus_connection_dbus_1_signal_unsubscribe (client->connection, client->name_owner_changed_subscription_id);
+    g_dbus_connection_signal_unsubscribe (client->connection, client->name_owner_changed_subscription_id);
   if (client->disconnected_signal_handler_id > 0)
     g_signal_handler_disconnect (client->connection, client->disconnected_signal_handler_id);
   g_object_unref (client->connection);
@@ -164,32 +160,31 @@ on_connection_disconnected (GDBusConnection *connection,
 
 static void
 on_name_owner_changed (GDBusConnection *connection,
-                       DBusMessage     *message,
-                       gpointer         user_data)
+                       const gchar      *sender_name,
+                       const gchar      *object_path,
+                       const gchar      *interface_name,
+                       const gchar      *signal_name,
+                       GVariant         *parameters,
+                       gpointer          user_data)
 {
   Client *client = user_data;
   const gchar *name;
   const gchar *old_owner;
   const gchar *new_owner;
-  DBusError dbus_error;
 
   if (!client->initialized)
     goto out;
 
-  /* extract parameters */
-  dbus_error_init (&dbus_error);
-  if (!dbus_message_get_args (message,
-                              &dbus_error,
-                              DBUS_TYPE_STRING, &name,
-                              DBUS_TYPE_STRING, &old_owner,
-                              DBUS_TYPE_STRING, &new_owner,
-                              DBUS_TYPE_INVALID))
-    {
-      g_warning ("Error extracting parameters for NameOwnerChanged signal: %s: %s",
-                 dbus_error.name, dbus_error.message);
-      dbus_error_free (&dbus_error);
-      goto out;
-    }
+  if (g_strcmp0 (object_path, "/org/freedesktop/DBus") != 0 ||
+      g_strcmp0 (interface_name, "org.freedesktop.DBus") != 0 ||
+      g_strcmp0 (sender_name, "org.freedesktop.DBus") != 0)
+    goto out;
+
+  g_variant_get (parameters,
+                 "(sss)",
+                 &name,
+                 &old_owner,
+                 &new_owner);
 
   /* we only care about a specific name */
   if (g_strcmp0 (name, client->name) != 0)
@@ -222,27 +217,18 @@ get_name_owner_cb (GObject      *source_object,
                    gpointer      user_data)
 {
   Client *client = user_data;
-  DBusMessage *reply;
-  DBusError dbus_error;
+  GVariant *result;
   const char *name_owner;
 
   name_owner = NULL;
-  reply = NULL;
+  result = NULL;
 
-  reply = g_dbus_connection_send_dbus_1_message_with_reply_finish (client->connection,
-                                                                   res,
-                                                                   NULL);
-  dbus_error_init (&dbus_error);
-  if (reply != NULL && !dbus_set_error_from_message (&dbus_error, reply))
+  result = g_dbus_connection_invoke_method_with_reply_finish (client->connection,
+                                                              res,
+                                                              NULL);
+  if (result != NULL)
     {
-      dbus_message_get_args (reply,
-                             &dbus_error,
-                             DBUS_TYPE_STRING, &name_owner,
-                             DBUS_TYPE_INVALID);
-    }
-  if (dbus_error_is_set (&dbus_error))
-    {
-      dbus_error_free (&dbus_error);
+      g_variant_get (result, "(s)", &name_owner);
     }
 
   if (name_owner != NULL)
@@ -258,8 +244,8 @@ get_name_owner_cb (GObject      *source_object,
 
   client->initialized = TRUE;
 
-  if (reply != NULL)
-    dbus_message_unref (reply);
+  if (result != NULL)
+    g_variant_unref (result);
   client_unref (client);
 }
 
@@ -268,8 +254,6 @@ get_name_owner_cb (GObject      *source_object,
 static void
 has_connection (Client *client)
 {
-  DBusMessage *message;
-
   /* listen for disconnection */
   client->disconnected_signal_handler_id = g_signal_connect (client->connection,
                                                              "disconnected",
@@ -277,34 +261,27 @@ has_connection (Client *client)
                                                              client);
 
   /* start listening to NameOwnerChanged messages immediately */
-  client->name_owner_changed_subscription_id =
-    g_dbus_connection_dbus_1_signal_subscribe (client->connection,
-                                               DBUS_SERVICE_DBUS,
-                                               DBUS_INTERFACE_DBUS,
-                                               "NameOwnerChanged",
-                                               DBUS_PATH_DBUS,
-                                               client->name,
-                                               on_name_owner_changed,
-                                               client,
-                                               NULL);
+  client->name_owner_changed_subscription_id = g_dbus_connection_signal_subscribe (client->connection,
+                                                                                   "org.freedesktop.DBus",  /* name */
+                                                                                   "org.freedesktop.DBus",  /* if */
+                                                                                   "NameOwnerChanged",      /* signal */
+                                                                                   "/org/freedesktop/DBus", /* path */
+                                                                                   client->name,
+                                                                                   on_name_owner_changed,
+                                                                                   client,
+                                                                                   NULL);
 
   /* check owner */
-  if ((message = dbus_message_new_method_call (DBUS_SERVICE_DBUS,
-                                               DBUS_PATH_DBUS,
-                                               DBUS_INTERFACE_DBUS,
-                                               "GetNameOwner")) == NULL)
-    _g_dbus_oom ();
-  if (!dbus_message_append_args (message,
-                                 DBUS_TYPE_STRING, &client->name,
-                                 DBUS_TYPE_INVALID))
-    _g_dbus_oom ();
-  g_dbus_connection_send_dbus_1_message_with_reply (client->connection,
-                                                    message,
-                                                    -1,
-                                                    NULL,
-                                                    (GAsyncReadyCallback) get_name_owner_cb,
-                                                    client_ref (client));
-  dbus_message_unref (message);
+  g_dbus_connection_invoke_method_with_reply (client->connection,
+                                              "org.freedesktop.DBus",  /* bus name */
+                                              "/org/freedesktop/DBus", /* object path */
+                                              "org.freedesktop.DBus",  /* interface name */
+                                              "GetNameOwner",          /* method name */
+                                              g_variant_new ("(s)", client->name),
+                                              -1,
+                                              NULL,
+                                              (GAsyncReadyCallback) get_name_owner_cb,
+                                              client_ref (client));
 }
 
 
@@ -449,6 +426,3 @@ g_bus_unwatch_name (guint watcher_id)
       client_unref (client);
     }
 }
-
-#define __G_DBUS_NAME_WATCHING_C__
-#include "gdbusaliasdef.c"

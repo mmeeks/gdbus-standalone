@@ -29,15 +29,9 @@
 #include "gdbusproxy.h"
 #include "gdbusenumtypes.h"
 #include "gdbusconnection.h"
-#include "gdbusconnection-lowlevel.h"
-#include "gdbusctypemapping-lowlevel.h"
 #include "gdbuserror.h"
-#include "gdbusstructure.h"
-#include "gdbusvariant.h"
 #include "gdbus-marshal.h"
 #include "gdbusprivate.h"
-
-#include "gdbusalias.h"
 
 /**
  * SECTION:gdbusproxy
@@ -58,6 +52,8 @@ struct _GDBusProxyPrivate
   gchar *unique_bus_name;
   gchar *object_path;
   gchar *interface_name;
+
+  /* gchar* -> GVariant* */
   GHashTable *properties;
 
   guint properties_changed_subscriber_id;
@@ -77,7 +73,7 @@ enum
 enum
 {
   PROPERTIES_CHANGED_SIGNAL,
-  SIGNAL_SIGNAL, /* (!) */
+  SIGNAL_SIGNAL,
   LAST_SIGNAL,
 };
 
@@ -304,7 +300,7 @@ g_dbus_proxy_class_init (GDBusProxyClass *klass)
    *
    * Emitted when one or more D-Bus properties on @proxy changes. The cached properties
    * are already replaced when this signal fires.
-   **/
+   */
   signals[PROPERTIES_CHANGED_SIGNAL] = g_signal_new ("g-dbus-proxy-properties-changed",
                                                      G_TYPE_DBUS_PROXY,
                                                      G_SIGNAL_RUN_LAST,
@@ -319,9 +315,9 @@ g_dbus_proxy_class_init (GDBusProxyClass *klass)
   /**
    * GDBusProxy::g-dbus-proxy-signal:
    * @proxy: The #GDBusProxy emitting the signal.
+   * @sender_name: The sender of the signal.
    * @signal_name: The name of the signal.
-   * @signature: The D-Bus signature of the signal.
-   * @args: A #GPtrArray containing one #GDBusVariant for each argument of the signal.
+   * @parameters: A #GVariant tuple with parameters for the signal.
    *
    * Emitted when a signal from the remote object and interface that @proxy is for, has been received.
    **/
@@ -336,7 +332,7 @@ g_dbus_proxy_class_init (GDBusProxyClass *klass)
                                          3,
                                          G_TYPE_STRING,
                                          G_TYPE_STRING,
-                                         G_TYPE_PTR_ARRAY);
+                                         G_TYPE_VARIANT);
 
 
   g_type_class_add_private (klass, sizeof (GDBusProxyPrivate));
@@ -364,24 +360,22 @@ g_dbus_proxy_init (GDBusProxy *proxy)
  *
  * However, for properties for which said D-Bus signal is not emitted, you
  * can catch other signals and modify the returned variant accordingly (remember to emit
- * #GDBusProxy::g-dbus-proxy-properties-changed yourself). This should be done in a subclass
- * of #GDBusProxy since multiple different call sites may share the same underlying
- * #GDBusProxy object.
+ * #GDBusProxy::g-dbus-proxy-properties-changed yourself).
  *
- * Returns: A reference to the #GDBusVariant object that holds the value for @property_name or
- * %NULL if @error is set. Free the reference with g_object_unref().
+ * Returns: A reference to the #GVariant instance that holds the value for @property_name or
+ * %NULL if @error is set. Free the reference with g_variant_unref().
  **/
-GDBusVariant *
+GVariant *
 g_dbus_proxy_get_cached_property (GDBusProxy          *proxy,
                                   const gchar         *property_name,
                                   GError             **error)
 {
-  GDBusVariant *variant;
+  GVariant *value;
 
   g_return_val_if_fail (G_IS_DBUS_PROXY (proxy), NULL);
   g_return_val_if_fail (property_name != NULL, NULL);
 
-  variant = NULL;
+  value = NULL;
 
   if (proxy->priv->flags & G_DBUS_PROXY_FLAGS_DO_NOT_LOAD_PROPERTIES)
     {
@@ -392,8 +386,8 @@ g_dbus_proxy_get_cached_property (GDBusProxy          *proxy,
       goto out;
     }
 
-  variant = g_hash_table_lookup (proxy->priv->properties, property_name);
-  if (variant == NULL)
+  value = g_hash_table_lookup (proxy->priv->properties, property_name);
+  if (value == NULL)
     {
       g_set_error (error,
                    G_DBUS_ERROR,
@@ -403,20 +397,22 @@ g_dbus_proxy_get_cached_property (GDBusProxy          *proxy,
       goto out;
     }
 
-  g_object_ref (variant);
+  g_variant_ref (value);
 
  out:
 
-  return variant;
+  return value;
 }
 
 /* ---------------------------------------------------------------------------------------------------- */
 
 static void
 on_signal_received (GDBusConnection  *connection,
+                    const gchar      *sender_name,
+                    const gchar      *object_path,
+                    const gchar      *interface_name,
                     const gchar      *signal_name,
-                    const gchar      *signature,
-                    GPtrArray        *args,
+                    GVariant         *parameters,
                     gpointer          user_data)
 {
   GDBusProxy *proxy = G_DBUS_PROXY (user_data);
@@ -424,27 +420,28 @@ on_signal_received (GDBusConnection  *connection,
   g_signal_emit (proxy,
                  signals[SIGNAL_SIGNAL],
                  0,
+                 sender_name,
                  signal_name,
-                 signature,
-                 args);
+                 parameters);
 }
 
 /* ---------------------------------------------------------------------------------------------------- */
 
 static void
 on_properties_changed (GDBusConnection  *connection,
-                       const gchar      *name,
-                       const gchar      *signature,
-                       GPtrArray        *args,
+                       const gchar      *sender_name,
+                       const gchar      *object_path,
+                       const gchar      *interface_name,
+                       const gchar      *signal_name,
+                       GVariant         *parameters,
                        gpointer          user_data)
 {
   GDBusProxy *proxy = G_DBUS_PROXY (user_data);
   GError *error;
-  const gchar *interface_name;
+  const gchar *interface_name_for_signal;
+  GVariantIter iter;
+  GVariant *item;
   GHashTable *changed_properties;
-  GHashTableIter hash_iter;
-  gchar *property_name;
-  GDBusVariant *property_value;
 
   error = NULL;
 
@@ -458,47 +455,43 @@ on_properties_changed (GDBusConnection  *connection,
     goto out;
 #endif
 
-  if (args->len != 2)
-    {
-      g_warning ("Incorrect number of values in PropertiesChanged() signal");
-      goto out;
-    }
+  g_variant_get (parameters,
+                 "(sa{sv})",
+                 &interface_name_for_signal,
+                 &iter);
 
-  if (!g_dbus_variant_is_string (G_DBUS_VARIANT (args->pdata[0])))
-    {
-      g_warning ("Expected a string for argument 1 of PropertiesChanged()");
-      goto out;
-    }
-  interface_name = g_dbus_variant_get_string (G_DBUS_VARIANT (args->pdata[0]));
+  if (g_strcmp0 (interface_name_for_signal, proxy->priv->interface_name) != 0)
+    goto out;
 
-  if (g_strcmp0 (interface_name, proxy->priv->interface_name) != 0)
-    {
-      g_warning ("Expected PropertiesChanged() for interface %s but got the signal for interface %s",
-                 proxy->priv->interface_name,
-                 interface_name);
-      goto out;
-    }
+  changed_properties = g_hash_table_new_full (g_str_hash,
+                                              g_str_equal,
+                                              g_free,
+                                              (GDestroyNotify) g_variant_unref);
 
-  if (!g_dbus_variant_is_hash_table (G_DBUS_VARIANT (args->pdata[1])))
+  while ((item = g_variant_iter_next_value (&iter)))
     {
-      g_warning ("Expected a hash table for argument 2 of PropertiesChanged()");
-      goto out;
-    }
-  changed_properties = g_dbus_variant_get_hash_table (G_DBUS_VARIANT (args->pdata[1]));
+      const gchar *key;
+      GVariant *value;
 
-  /* update local cache */
-  g_hash_table_iter_init (&hash_iter, changed_properties);
-  while (g_hash_table_iter_next (&hash_iter,
-                                 (gpointer) &property_name,
-                                 (gpointer) &property_value))
-    {
+      g_variant_get (item,
+                     "{sv}",
+                     &key,
+                     &value);
+
       g_hash_table_insert (proxy->priv->properties,
-                           g_strdup (property_name),
-                           g_object_ref (property_value));
+                           g_strdup (key),
+                           value); /* steals value */
+
+      g_hash_table_insert (changed_properties,
+                           g_strdup (key),
+                           g_variant_ref (value));
     }
+
 
   /* emit signal */
   g_signal_emit (proxy, signals[PROPERTIES_CHANGED_SIGNAL], 0, changed_properties);
+
+  g_hash_table_unref (changed_properties);
 
  out:
   ;
@@ -551,6 +544,35 @@ subscribe_to_signals (GDBusProxy *proxy)
 
 /* ---------------------------------------------------------------------------------------------------- */
 
+static void
+process_get_all_reply (GDBusProxy *proxy,
+                       GVariant   *result)
+{
+  GVariantIter iter;
+  GVariant *item;
+
+  proxy->priv->properties = g_hash_table_new_full (g_str_hash,
+                                                   g_str_equal,
+                                                   g_free,
+                                                   (GDestroyNotify) g_variant_unref);
+
+  g_variant_iter_init (&iter, g_variant_get_child_value (result, 0));
+  while ((item = g_variant_iter_next_value (&iter)) != NULL)
+    {
+      const gchar *key;
+      GVariant *value;
+
+      g_variant_get (item,
+                     "{sv}",
+                     &key,
+                     &value);
+      //g_print ("got %s -> %s\n", key, g_variant_markup_print (value, FALSE, 0, 0));
+
+      g_hash_table_insert (proxy->priv->properties,
+                           g_strdup (key),
+                           value); /* steals value */
+    }
+}
 
 static gboolean
 initable_init (GInitable       *initable,
@@ -558,6 +580,7 @@ initable_init (GInitable       *initable,
                GError         **error)
 {
   GDBusProxy *proxy = G_DBUS_PROXY (initable);
+  GVariant *result;
   gboolean ret;
 
   ret = FALSE;
@@ -565,20 +588,21 @@ initable_init (GInitable       *initable,
   if (!(proxy->priv->flags & G_DBUS_PROXY_FLAGS_DO_NOT_LOAD_PROPERTIES))
     {
       /* load all properties synchronously */
-      if (!g_dbus_proxy_invoke_method_sync (proxy,
-                                            "org.freedesktop.DBus.Properties.GetAll",
-                                            "s",
-                                            "a{sv}",
-                                            -1,           /* timeout */
-                                            cancellable,
-                                            error,
-                                            G_TYPE_STRING, proxy->priv->interface_name,
-                                            G_TYPE_INVALID,
-                                            G_TYPE_HASH_TABLE, &proxy->priv->properties,
-                                            G_TYPE_INVALID))
-        {
-          goto out;
-        }
+      result = g_dbus_connection_invoke_method_with_reply_sync (proxy->priv->connection,
+                                                                proxy->priv->unique_bus_name,
+                                                                proxy->priv->object_path,
+                                                                "org.freedesktop.DBus.Properties",
+                                                                "GetAll",
+                                                                g_variant_new_string (proxy->priv->interface_name),
+                                                                -1,           /* timeout */
+                                                                cancellable,
+                                                                error);
+      if (result == NULL)
+        goto out;
+
+      process_get_all_reply (proxy, result);
+
+      g_variant_unref (result);
     }
 
   subscribe_to_signals (proxy);
@@ -598,6 +622,34 @@ initable_iface_init (GInitableIface *initable_iface)
 /* ---------------------------------------------------------------------------------------------------- */
 
 static void
+get_all_cb (GDBusConnection *connection,
+            GAsyncResult    *res,
+            gpointer         user_data)
+{
+  GSimpleAsyncResult *simple = G_SIMPLE_ASYNC_RESULT (user_data);
+  GVariant *result;
+  GError *error;
+
+  result = g_dbus_connection_invoke_method_with_reply_finish (connection,
+                                                              res,
+                                                              &error);
+  if (result == NULL)
+    {
+      g_simple_async_result_set_from_error (simple, error);
+      g_error_free (error);
+    }
+  else
+    {
+      g_simple_async_result_set_op_res_gpointer (simple,
+                                                 result,
+                                                 (GDestroyNotify) g_variant_unref);
+    }
+
+  g_simple_async_result_complete_in_idle (simple);
+  g_object_unref (simple);
+}
+
+static void
 async_initable_init_async (GAsyncInitable     *initable,
                            gint                io_priority,
                            GCancellable       *cancellable,
@@ -605,19 +657,32 @@ async_initable_init_async (GAsyncInitable     *initable,
                            gpointer            user_data)
 {
   GDBusProxy *proxy = G_DBUS_PROXY (initable);
+  GSimpleAsyncResult *simple;
 
-  /* TODO: avoid loading properties if requested */
+  simple = g_simple_async_result_new (G_OBJECT (proxy),
+                                      callback,
+                                      user_data,
+                                      NULL);
 
-  /* load all properties asynchronously */
-  g_dbus_proxy_invoke_method (proxy,
-                              "org.freedesktop.DBus.Properties.GetAll",
-                              "s",
-                              -1,           /* timeout */
-                              cancellable,
-                              callback,
-                              user_data,
-                              G_TYPE_STRING, proxy->priv->interface_name,
-                              G_TYPE_INVALID);
+  if (!(proxy->priv->flags & G_DBUS_PROXY_FLAGS_DO_NOT_LOAD_PROPERTIES))
+    {
+      /* load all properties asynchronously */
+      g_dbus_connection_invoke_method_with_reply (proxy->priv->connection,
+                                                  proxy->priv->unique_bus_name,
+                                                  proxy->priv->object_path,
+                                                  "org.freedesktop.DBus.Properties",
+                                                  "GetAll",
+                                                  g_variant_new ("(s)", proxy->priv->interface_name),
+                                                  -1,           /* timeout */
+                                                  cancellable,
+                                                  (GAsyncReadyCallback) get_all_cb,
+                                                  simple);
+    }
+  else
+    {
+      g_simple_async_result_complete_in_idle (simple);
+      g_object_unref (simple);
+    }
 }
 
 static gboolean
@@ -626,17 +691,17 @@ async_initable_init_finish (GAsyncInitable  *initable,
                             GError         **error)
 {
   GDBusProxy *proxy = G_DBUS_PROXY (initable);
+  GSimpleAsyncResult *simple = G_SIMPLE_ASYNC_RESULT (res);
+  GVariant *result;
   gboolean ret;
 
   ret = FALSE;
 
-  if (!g_dbus_proxy_invoke_method_finish (proxy,
-                                          "a{sv}",
-                                          res,
-                                          error,
-                                          G_TYPE_HASH_TABLE, &proxy->priv->properties,
-                                          G_TYPE_INVALID))
+  result = g_simple_async_result_get_op_res_gpointer (simple);
+  if (result == NULL)
     goto out;
+
+  process_get_all_reply (proxy, result);
 
   subscribe_to_signals (proxy);
 
@@ -874,572 +939,3 @@ g_dbus_proxy_get_interface_name (GDBusProxy *proxy)
 }
 
 /* ---------------------------------------------------------------------------------------------------- */
-
-static gboolean
-extract_values_cb (guint        arg_num,
-                   const gchar *signature,
-                   GType        type,
-                   va_list      va_args,
-                   gpointer     user_data)
-{
-  DBusMessageIter *iter = user_data;
-  GValue value = {0};
-  GValue value2 = {0};
-  GValue *value_to_extract;
-  GError *error;
-  gboolean ret;
-  gchar *error_str;
-
-  ret = TRUE;
-
-  //g_debug ("arg %d: %s", arg_num, g_type_name (type));
-
-  error = NULL;
-  if (!g_dbus_c_type_mapping_get_value_from_iter (iter, &value, &error))
-    {
-      g_warning ("Error extracting value for arg %d: %s",
-                 arg_num,
-                 error->message);
-      g_error_free (error);
-      goto out;
-    }
-  value_to_extract = &value;
-
-  /* coerce if needed */
-  if (!g_type_is_a (type, G_VALUE_TYPE (&value)))
-    {
-      /* try and see if a transformation routine is available */
-      g_value_init (&value2, type);
-      if (!g_value_transform (&value, &value2))
-        {
-          g_warning ("GType '%s' is incompatible with D-Bus signature '%s' (expected GType '%s') "
-                     "and no transformation is available",
-                     g_type_name (type),
-                     signature,
-                     g_type_name (G_VALUE_TYPE (&value)));
-          g_value_unset (&value);
-          goto out;
-        }
-      //g_debug ("Transformed from %s to %s", g_type_name (G_VALUE_TYPE (&value)), g_type_name (type));
-      value_to_extract = &value2;
-      g_value_unset (&value);
-    }
-
-  error_str = NULL;
-  G_VALUE_LCOPY (value_to_extract, va_args, G_VALUE_NOCOPY_CONTENTS, &error_str);
-  if (error != NULL)
-    {
-      g_warning ("Error copying value: %s", error_str);
-      g_free (error_str);
-      g_value_unset (value_to_extract);
-      goto out;
-    }
-
-  dbus_message_iter_next (iter);
-
-  ret = FALSE;
-
- out:
-  return ret;
-}
-
-/* ---------------------------------------------------------------------------------------------------- */
-
-static gboolean
-append_values_cb (guint        arg_num,
-                  const gchar *signature,
-                  GType        type,
-                  va_list      va_args,
-                  gpointer     user_data)
-{
-  DBusMessageIter *iter = user_data;
-  GValue value = {0};
-  GValue value2 = {0};
-  GValue *value_to_append;
-  GError *error;
-  gboolean ret;
-  gchar *error_str;
-  GType expected_type;
-
-  ret = TRUE;
-
-  //g_debug ("arg %d: %s", arg_num, g_type_name (type));
-
-  g_value_init (&value, type);
-  error_str = NULL;
-  G_VALUE_COLLECT (&value, va_args, G_VALUE_NOCOPY_CONTENTS, &error_str);
-  if (error_str != NULL)
-    {
-      g_warning ("Error collecting value: %s", error_str);
-      g_free (error_str);
-      g_value_unset (&value);
-      goto out;
-    }
-  value_to_append = &value;
-
-  /* coerce if needed */
-  expected_type = _g_dbus_signature_get_gtype (signature);
-  if (!g_type_is_a (type, expected_type))
-    {
-      /* try and see if a transformation routine is available */
-      g_value_init (&value2, expected_type);
-      if (!g_value_transform (&value, &value2))
-        {
-          g_warning ("GType '%s' is incompatible with D-Bus signature '%s' (expected GType '%s') "
-                     "and no transformation is available",
-                     g_type_name (type),
-                     signature,
-                     g_type_name (expected_type));
-          g_value_unset (&value);
-          goto out;
-        }
-      //g_debug ("Transformed from %s to %s", g_type_name (type), g_type_name (expected_type));
-      value_to_append = &value2;
-      g_value_unset (&value);
-    }
-
-  error = NULL;
-  if (!g_dbus_c_type_mapping_append_value_to_iter (iter, signature, value_to_append, &error))
-    {
-      g_warning ("Error appending value for arg %d: %s",
-                 arg_num,
-                 error->message);
-      g_error_free (error);
-      g_value_unset (value_to_append);
-      goto out;
-    }
-
-  g_value_unset (value_to_append);
-
-  ret = FALSE;
-
- out:
-  return ret;
-}
-
-/* ---------------------------------------------------------------------------------------------------- */
-
-static void
-invoke_method_cb (GDBusConnection *connection,
-                  GAsyncResult    *result,
-                  gpointer         user_data)
-{
-  GSimpleAsyncResult *simple = G_SIMPLE_ASYNC_RESULT (user_data);
-  DBusMessage *reply;
-  GError *error;
-
-  error = NULL;
-  reply = g_dbus_connection_send_dbus_1_message_with_reply_finish (connection,
-                                                                   result,
-                                                                   &error);
-
-  if (reply == NULL)
-    {
-      g_simple_async_result_set_from_error (simple, error);
-      g_error_free (error);
-    }
-  else
-    {
-      g_simple_async_result_set_op_res_gpointer (simple,
-                                                 reply,
-                                                 (GDestroyNotify) dbus_message_unref);
-    }
-
-  g_simple_async_result_complete_in_idle (simple);
-  g_object_unref (simple);
-}
-
-static void
-g_dbus_proxy_invoke_method_valist (GDBusProxy          *proxy,
-                                   const gchar         *method_name,
-                                   const gchar         *signature,
-                                   guint                timeout_msec,
-                                   GCancellable        *cancellable,
-                                   GAsyncReadyCallback  callback,
-                                   gpointer             user_data,
-                                   GType                first_in_arg_type,
-                                   va_list              va_args)
-{
-  DBusMessage *message;
-  DBusMessageIter iter;
-  GSimpleAsyncResult *simple;
-
-  simple = g_simple_async_result_new (G_OBJECT (proxy),
-                                      callback,
-                                      user_data,
-                                      g_dbus_proxy_invoke_method);
-
-  if (strchr (method_name, '.'))
-    {
-      gchar *buf;
-      gchar *p;
-      buf = g_strdup (method_name);
-      p = strrchr (buf, '.');
-      *p = '\0';
-      if ((message = dbus_message_new_method_call (proxy->priv->unique_bus_name,
-                                                   proxy->priv->object_path,
-                                                   buf,
-                                                   p + 1)) == NULL)
-        _g_dbus_oom ();
-      g_free (buf);
-    }
-  else
-    {
-      if ((message = dbus_message_new_method_call (proxy->priv->unique_bus_name,
-                                                   proxy->priv->object_path,
-                                                   proxy->priv->interface_name,
-                                                   method_name)) == NULL)
-        _g_dbus_oom ();
-    }
-
-  /* append args to message */
-  dbus_message_iter_init_append (message, &iter);
-  if (_gdbus_signature_vararg_foreach (signature,
-                                       first_in_arg_type,
-                                       va_args,
-                                       append_values_cb,
-                                       &iter))
-    goto out;
-
-  g_dbus_connection_send_dbus_1_message_with_reply (proxy->priv->connection,
-                                                    message,
-                                                    timeout_msec,
-                                                    cancellable,
-                                                    (GAsyncReadyCallback) invoke_method_cb,
-                                                    simple);
-  dbus_message_unref (message);
-
- out:
-  ;
-}
-
-static gboolean
-g_dbus_proxy_invoke_method_finish_valist (GDBusProxy          *proxy,
-                                          const gchar         *signature,
-                                          GAsyncResult        *res,
-                                          GError             **error,
-                                          GType                first_out_arg_type,
-                                          va_list              va_args)
-{
-  GSimpleAsyncResult *simple = G_SIMPLE_ASYNC_RESULT (res);
-  DBusMessage *reply;
-  DBusMessageIter reply_iter;
-  DBusError dbus_error;
-  gboolean ret;
-
-  g_warn_if_fail (g_simple_async_result_get_source_tag (simple) == g_dbus_proxy_invoke_method);
-
-  ret = FALSE;
-  if (g_simple_async_result_propagate_error (simple, error))
-    goto out;
-
-  reply = g_simple_async_result_get_op_res_gpointer (simple);
-  dbus_error_init (&dbus_error);
-
-  /* Translate to GError if the reply is an error */
-  if (dbus_set_error_from_message (&dbus_error, reply))
-    {
-      /* TODO: hmm, gotta get caller to pass error_types or... better to rethink GDBusError helpers */
-      g_dbus_error_set_dbus_error (error,
-                                   &dbus_error,
-                                   NULL,
-                                   NULL);
-      dbus_error_free (&dbus_error);
-      goto out;
-    }
-
-  /* extract values from message */
-  dbus_message_iter_init (reply, &reply_iter);
-  if (_gdbus_signature_vararg_foreach (signature,
-                                       first_out_arg_type,
-                                       va_args,
-                                       extract_values_cb,
-                                       &reply_iter))
-    {
-      g_set_error (error,
-                   G_DBUS_ERROR,
-                   G_DBUS_ERROR_FAILED,
-                   _("Error extracting values from D-Bus message. This is a bug in the application"));
-      ret = FALSE;
-      goto out;
-    }
-
-  ret = TRUE;
-
- out:
-  return ret;
-}
-
-static gboolean
-g_dbus_proxy_invoke_method_sync_valist (GDBusProxy          *proxy,
-                                        const gchar         *method_name,
-                                        const gchar         *in_signature,
-                                        const gchar         *out_signature,
-                                        guint                timeout_msec,
-                                        GCancellable        *cancellable,
-                                        GError             **error,
-                                        GType                first_in_arg_type,
-                                        va_list              va_args)
-{
-  DBusMessage *message;
-  DBusMessage *reply;
-  DBusMessageIter iter;
-  DBusMessageIter reply_iter;
-  DBusError dbus_error;
-  GType first_out_arg_type;
-  gboolean ret;
-
-  message = NULL;
-  reply = NULL;
-  ret = FALSE;
-
-  if (strchr (method_name, '.'))
-    {
-      gchar *buf;
-      gchar *p;
-      buf = g_strdup (method_name);
-      p = strrchr (buf, '.');
-      *p = '\0';
-      if ((message = dbus_message_new_method_call (proxy->priv->unique_bus_name,
-                                                   proxy->priv->object_path,
-                                                   buf,
-                                                   p + 1)) == NULL)
-        _g_dbus_oom ();
-      g_free (buf);
-    }
-  else
-    {
-      if ((message = dbus_message_new_method_call (proxy->priv->unique_bus_name,
-                                                   proxy->priv->object_path,
-                                                   proxy->priv->interface_name,
-                                                   method_name)) == NULL)
-        _g_dbus_oom ();
-    }
-
-  /* append args to message */
-  if (strlen (in_signature) == 0)
-    {
-      g_assert (first_in_arg_type == G_TYPE_INVALID);
-    }
-  else
-    {
-      dbus_message_iter_init_append (message, &iter);
-      if (_gdbus_signature_vararg_foreach (in_signature,
-                                           first_in_arg_type,
-                                           va_args,
-                                           append_values_cb,
-                                           &iter))
-        goto out;
-
-      g_assert (va_arg (va_args, GType) == G_TYPE_INVALID);
-    }
-
-  reply = g_dbus_connection_send_dbus_1_message_with_reply_sync (proxy->priv->connection,
-                                                                 message,
-                                                                 timeout_msec,
-                                                                 cancellable,
-                                                                 error);
-  if (reply == NULL)
-    goto out;
-
-  /* Translate to GError if the reply is an error */
-  dbus_error_init (&dbus_error);
-  if (dbus_set_error_from_message (&dbus_error, reply))
-    {
-      /* TODO: hmm, gotta get caller to pass error_types or... better to rethink GDBusError helpers */
-      g_dbus_error_set_dbus_error (error,
-                                   &dbus_error,
-                                   NULL,
-                                   NULL);
-      dbus_error_free (&dbus_error);
-      goto out;
-    }
-
-  first_out_arg_type = va_arg (va_args, GType);
-  if (strlen (out_signature) == 0)
-    {
-      g_assert (first_out_arg_type == G_TYPE_INVALID);
-    }
-  else
-    {
-      /* extract values from message */
-      dbus_message_iter_init (reply, &reply_iter);
-      if (_gdbus_signature_vararg_foreach (out_signature,
-                                           first_out_arg_type,
-                                           va_args,
-                                           extract_values_cb,
-                                           &reply_iter))
-        {
-          g_set_error (error,
-                       G_DBUS_ERROR,
-                       G_DBUS_ERROR_FAILED,
-                       _("Error extracting values from D-Bus message. This is a bug in the application"));
-          ret = FALSE;
-          goto out;
-        }
-
-      g_assert (va_arg (va_args, GType) == G_TYPE_INVALID);
-    }
-
-  ret = TRUE;
-
- out:
-  if (message != NULL)
-    dbus_message_unref (message);
-  if (reply != NULL)
-    dbus_message_unref (reply);
-
-  return ret;
-}
-
-/**
- * g_dbus_proxy_invoke_method:
- * @proxy: A #GDBusProxy.
- * @method_name: The name of the method to invoke.
- * @signature: The D-Bus signature for all arguments being passed to the method.
- * @timeout_msec: Timeout in milliseconds or -1 for default timeout.
- * @cancellable: A #GCancellable or %NULL.
- * @callback: The callback function to invoke when the reply is ready or %NULL.
- * @user_data: User data to pass to @callback.
- * @first_in_arg_type: The #GType of the first argument to pass or #G_TYPE_INVALID if there are no arguments.
- * @...: The value of the first in argument, followed by zero or more (type, value) pairs, followed by #G_TYPE_INVALID.
- *
- * Invokes the method @method_name on the interface and remote object represented by @proxy. This
- * is an asynchronous operation and when the reply is ready @callback will be invoked (on
- * the main thread) and you can get the result by calling g_dbus_proxy_invoke_method_finish().
- *
- * If @method_name contains any dots, then @name is split into interface and
- * method name parts. This allows using @proxy for invoking methods on
- * other interfaces.
- *
- * Note that @signature and and the supplied (type, value) pairs must match as described in
- * chapter TODO_SECTION_EXPLAINING_DBUS_TO_GTYPE_OBJECT_MAPPING.
- **/
-void
-g_dbus_proxy_invoke_method (GDBusProxy          *proxy,
-                            const gchar         *method_name,
-                            const gchar         *signature,
-                            guint                timeout_msec,
-                            GCancellable        *cancellable,
-                            GAsyncReadyCallback  callback,
-                            gpointer             user_data,
-                            GType                first_in_arg_type,
-                            ...)
-{
-  va_list va_args;
-
-  va_start (va_args, first_in_arg_type);
-  g_dbus_proxy_invoke_method_valist (proxy,
-                                     method_name,
-                                     signature,
-                                     timeout_msec,
-                                     cancellable,
-                                     callback,
-                                     user_data,
-                                     first_in_arg_type,
-                                     va_args);
-  va_end (va_args);
-}
-
-/**
- * g_dbus_proxy_invoke_method_finish:
- * @proxy: A #GDBusProxy.
- * @signature: The D-Bus signature for all return values.
- * @res: A #GAsyncResult obtained from the #GAsyncReadyCallback function passed to g_dbus_proxy_invoke_method().
- * @error: Return location for error or %NULL.
- * @first_out_arg_type: The #GType of the first return value or #G_TYPE_INVALID if there are no return values.
- * @...: The location to store of the first return value, followed by zero or more (type, value) pairs,
- * followed by #G_TYPE_INVALID.
- *
- * Finishes invoking a method on @proxy initiated with g_dbus_proxy_invoke_method().
- *
- * Note that @signature and and the supplied (type, return value) pairs must match as described in
- * chapter TODO_SECTION_EXPLAINING_DBUS_TO_GTYPE_OBJECT_MAPPING.
- *
- * Returns: %TRUE if the method invocation succeeded, %FALSE is @error is set.
- **/
-gboolean
-g_dbus_proxy_invoke_method_finish (GDBusProxy          *proxy,
-                                   const gchar         *signature,
-                                   GAsyncResult        *res,
-                                   GError             **error,
-                                   GType                first_out_arg_type,
-                                   ...)
-{
-  gboolean ret;
-  va_list va_args;
-
-  g_return_val_if_fail (G_IS_DBUS_PROXY (proxy), FALSE);
-  /* TODO: other checks */
-
-  va_start (va_args, first_out_arg_type);
-  ret = g_dbus_proxy_invoke_method_finish_valist (proxy,
-                                                  signature,
-                                                  res,
-                                                  error,
-                                                  first_out_arg_type,
-                                                  va_args);
-  va_end (va_args);
-
-  return ret;
-}
-
-/**
- * g_dbus_proxy_invoke_method_sync:
- * @proxy: A #GDBusProxy.
- * @method_name: The name of the method to invoke.
- * @in_signature: The D-Bus signature for all arguments being passed to the method.
- * @out_signature: The D-Bus signature for all return values.
- * @timeout_msec: Timeout in milliseconds or -1 for default timeout.
- * @cancellable: A #GCancellable or %NULL.
- * @error: Return location for @error or %NULL.
- * @first_in_arg_type: The #GType of the first argument to pass or #G_TYPE_INVALID if there are no arguments.
- * @...: The value of the first argument to pass (if any), followed by zero or more (type, value) pairs,
- * followed by #G_TYPE_INVALID. Then one or more pairs for the #GType and return location for the return
- * values, then terminated by #G_TYPE_INVALID.
- *
- * Synchronously invokes the method @method_name on the interface and remote
- * object represented by @proxy.
- *
- * If @method_name contains any dots, then @method_name is split into interface and
- * method name parts. This allows using @proxy for invoking methods on
- * other interfaces.
- *
- * Returns: %TRUE if the call succeeded, %FALSE if @error is set.
- **/
-gboolean
-g_dbus_proxy_invoke_method_sync (GDBusProxy          *proxy,
-                                 const gchar         *method_name,
-                                 const gchar         *in_signature,
-                                 const gchar         *out_signature,
-                                 guint                timeout_msec,
-                                 GCancellable        *cancellable,
-                                 GError             **error,
-                                 GType                first_in_arg_type,
-                                 ...)
-{
-  va_list va_args;
-  gboolean ret;
-
-  g_return_val_if_fail (G_IS_DBUS_PROXY (proxy), FALSE);
-  /* TODO: other checks */
-
-  ret = FALSE;
-
-  va_start (va_args, first_in_arg_type);
-  ret = g_dbus_proxy_invoke_method_sync_valist (proxy,
-                                                method_name,
-                                                in_signature,
-                                                out_signature,
-                                                timeout_msec,
-                                                cancellable,
-                                                error,
-                                                first_in_arg_type,
-                                                va_args);
-  va_end (va_args);
-
-  return ret;
-}
-
-#define __G_DBUS_PROXY_C__
-#include "gdbusaliasdef.c"

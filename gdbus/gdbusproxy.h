@@ -70,9 +70,9 @@ struct _GDBusProxyClass
   void (*properties_changed)           (GDBusProxy   *proxy,
                                         GHashTable   *changed_properties);
   void (*signal)                       (GDBusProxy   *proxy,
+                                        const gchar  *sender_name,
                                         const gchar  *signal_name,
-                                        const gchar  *signature,
-                                        GPtrArray    *args);
+                                        GVariant     *parameters);
 
   /*< private >*/
   /* Padding for future expansion */
@@ -109,31 +109,7 @@ GDBusProxyFlags  g_dbus_proxy_get_flags                   (GDBusProxy          *
 const gchar     *g_dbus_proxy_get_unique_bus_name         (GDBusProxy          *proxy);
 const gchar     *g_dbus_proxy_get_object_path             (GDBusProxy          *proxy);
 const gchar     *g_dbus_proxy_get_interface_name          (GDBusProxy          *proxy);
-void             g_dbus_proxy_invoke_method               (GDBusProxy          *proxy,
-                                                           const gchar         *method_name,
-                                                           const gchar         *signature,
-                                                           guint                timeout_msec,
-                                                           GCancellable        *cancellable,
-                                                           GAsyncReadyCallback  callback,
-                                                           gpointer             user_data,
-                                                           GType                first_in_arg_type,
-                                                           ...);
-gboolean         g_dbus_proxy_invoke_method_finish        (GDBusProxy          *proxy,
-                                                           const gchar         *signature,
-                                                           GAsyncResult        *res,
-                                                           GError             **error,
-                                                           GType                first_out_arg_type,
-                                                           ...);
-gboolean         g_dbus_proxy_invoke_method_sync          (GDBusProxy          *proxy,
-                                                           const gchar         *method_name,
-                                                           const gchar         *in_signature,
-                                                           const gchar         *out_signature,
-                                                           guint                timeout_msec,
-                                                           GCancellable        *cancellable,
-                                                           GError             **error,
-                                                           GType                first_in_arg_type,
-                                                           ...);
-GDBusVariant    *g_dbus_proxy_get_cached_property         (GDBusProxy          *proxy,
+GVariant        *g_dbus_proxy_get_cached_property         (GDBusProxy          *proxy,
                                                            const gchar         *property_name,
                                                            GError             **error);
 

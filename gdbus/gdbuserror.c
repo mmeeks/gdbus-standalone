@@ -27,10 +27,8 @@
 #include <glib/gi18n.h>
 
 #include "gdbuserror.h"
-#include "gdbuserror-lowlevel.h"
 #include "gdbusenumtypes.h"
-
-#include "gdbusalias.h"
+#include "gdbusprivate.h"
 
 /**
  * SECTION:gdbuserror
@@ -123,13 +121,9 @@ g_dbus_error_get_remote_exception (GError  *error,
 }
 
 /**
- * g_dbus_error_new_for_gerror:
+ * _g_dbus_error_new_for_gerror:
  * @error: A #GError.
  * @dbus_error: Return location for #DBusError.
- *
- * <para><note>
- * This function is marked as unstable API. You must include <literal>gdbus/gdbus-lowlevel.h</literal> to use it.
- * </note></para>
  *
  * Utility function to map a #GError to a #DBusError by getting the
  * D-Bus error name from the nick of the element of the registered
@@ -140,13 +134,13 @@ g_dbus_error_get_remote_exception (GError  *error,
  * the returned #DBusError will be of the form
  * org.gtk.GDBus.UnmappedGError.Quark_HEXENCODED_QUARK_NAME_.Code_ERROR_CODE. This
  * allows other GDBus applications to map the #DBusError back to the
- * #GError using g_dbus_error_new_for_dbus_error().
+ * #GError using _g_dbus_error_new_for_dbus_error().
  *
  * This function is intended for use by object mappings only.
  */
 void
-g_dbus_error_new_for_gerror (GError    *error,
-                             DBusError *dbus_error)
+_g_dbus_error_new_for_gerror (GError    *error,
+                              DBusError *dbus_error)
 {
   const gchar *domain_as_string;
   gchar *error_name;
@@ -297,17 +291,13 @@ _g_dbus_error_decode_gerror (const gchar *dbus_name,
 }
 
 /**
- * g_dbus_error_new_for_dbus_error_valist:
+ * _g_dbus_error_new_for_dbus_error_valist:
  * @dbus_error: A #DBusError.
  * @error_types: %NULL or a #G_TYPE_INVALID terminated array of #GType<!-- -->s for error domains to consider.
  * @prepend_format: %NULL or format for message to prepend to the D-Bus error message.
  * @va_args: Arguments for @prepend_format.
  *
- * <para><note>
- * This function is marked as unstable API. You must include <literal>gdbus/gdbus-lowlevel.h</literal> to use it.
- * </note></para>
- *
- * Like g_dbus_error_new_for_dbus_error() but intended for language
+ * Like _g_dbus_error_new_for_dbus_error() but intended for language
  * bindings.
  *
  * This function is intended for use by object mappings only.
@@ -315,7 +305,7 @@ _g_dbus_error_decode_gerror (const gchar *dbus_name,
  * Returns: A newly allocated #GError. Free with g_error_free().
  **/
 GError *
-g_dbus_error_new_for_dbus_error_valist (DBusError   *dbus_error,
+_g_dbus_error_new_for_dbus_error_valist (DBusError   *dbus_error,
                                         GType       *error_types,
                                         const gchar *prepend_format,
                                         va_list      va_args)
@@ -400,22 +390,18 @@ g_dbus_error_new_for_dbus_error_valist (DBusError   *dbus_error,
 }
 
 /**
- * g_dbus_error_new_for_dbus_error:
+ * _g_dbus_error_new_for_dbus_error:
  * @dbus_error: A #DBusError.
  * @error_types: %NULL or a #G_TYPE_INVALID terminated array of #GType<!-- -->s for error domains to consider.
  * @prepend_format: %NULL or format for message to prepend to the D-Bus error message.
  * @...: Arguments for @prepend_format.
- *
- * <para><note>
- * This function is marked as unstable API. You must include <literal>gdbus/gdbus-lowlevel.h</literal> to use it.
- * </note></para>
  *
  * Utility function to map a #DBusError to a #GError by matching the
  * name of @dbus_error with the nick names in the enumerations
  * specified by the @error_types array.
  *
  * This function also handles unmapped #GError<!-- -->'s as described
- * in g_dbus_error_new_for_gerror().
+ * in _g_dbus_error_new_for_gerror().
  *
  * If no suitable error code is found, then
  * #G_DBUS_ERROR_REMOTE_EXCEPTION in the #G_DBUS_ERROR domain is used
@@ -428,7 +414,7 @@ g_dbus_error_new_for_dbus_error_valist (DBusError   *dbus_error,
  * Returns: A newly allocated #GError. Free with g_error_free().
  */
 GError *
-g_dbus_error_new_for_dbus_error (DBusError   *dbus_error,
+_g_dbus_error_new_for_dbus_error (DBusError   *dbus_error,
                                  GType       *error_types,
                                  const gchar *prepend_format,
                                  ...)
@@ -437,7 +423,7 @@ g_dbus_error_new_for_dbus_error (DBusError   *dbus_error,
   GError *new_error;
 
   va_start (va_args, prepend_format);
-  new_error = g_dbus_error_new_for_dbus_error_valist (dbus_error,
+  new_error = _g_dbus_error_new_for_dbus_error_valist (dbus_error,
                                                       error_types,
                                                       prepend_format,
                                                       va_args);
@@ -447,25 +433,21 @@ g_dbus_error_new_for_dbus_error (DBusError   *dbus_error,
 }
 
 /**
- * g_dbus_error_set_dbus_error:
+ * _g_dbus_error_set_dbus_error:
  * @error: %NULL or a #GError to set.
  * @dbus_error: A #DBusError.
  * @error_types: %NULL or a #G_TYPE_INVALID terminated array of #GType<!-- -->s for error domains to consider.
  * @prepend_format: %NULL or format for message to prepend to the D-Bus error message.
  * @...: Arguments for @prepend_format.
  *
- * <para><note>
- * This function is marked as unstable API. You must include <literal>gdbus/gdbus-lowlevel.h</literal> to use it.
- * </note></para>
- *
  * Does nothing if @error is %NULL; if @error is non-%NULL, then
  * *@error must be NULL. A new #GError is created and assigned to
- * *@error using g_dbus_error_new_for_dbus_error().
+ * *@error using _g_dbus_error_new_for_dbus_error().
  *
  * This function is intended for use by object mappings only.
  */
 void
-g_dbus_error_set_dbus_error (GError      **error,
+_g_dbus_error_set_dbus_error (GError      **error,
                              DBusError    *dbus_error,
                              GType        *error_types,
                              const gchar  *prepend_format,
@@ -478,7 +460,7 @@ g_dbus_error_set_dbus_error (GError      **error,
     return;
 
   va_start (va_args, prepend_format);
-  new_error = g_dbus_error_new_for_dbus_error_valist (dbus_error,
+  new_error = _g_dbus_error_new_for_dbus_error_valist (dbus_error,
                                                       error_types,
                                                       prepend_format,
                                                       va_args);
@@ -487,24 +469,20 @@ g_dbus_error_set_dbus_error (GError      **error,
 }
 
 /**
- * g_dbus_error_set_dbus_error_valist:
+ * _g_dbus_error_set_dbus_error_valist:
  * @error: %NULL or a #GError to set.
  * @dbus_error: A #DBusError.
  * @error_types: %NULL or a #G_TYPE_INVALID terminated array of #GType<!-- -->s for error domains to consider.
  * @prepend_format: %NULL or format for message to prepend to the D-Bus error message.
  * @va_args: Arguments for @prepend_format.
  *
- * <para><note>
- * This function is marked as unstable API. You must include <literal>gdbus/gdbus-lowlevel.h</literal> to use it.
- * </note></para>
- *
- * Like g_dbus_error_set_dbus_error() but intended for language
+ * Like _g_dbus_error_set_dbus_error() but intended for language
  * bindings.
  *
  * This function is intended for use by object mappings only.
  */
 void
-g_dbus_error_set_dbus_error_valist (GError      **error,
+_g_dbus_error_set_dbus_error_valist (GError      **error,
                                     DBusError    *dbus_error,
                                     GType        *error_types,
                                     const gchar  *prepend_format,
@@ -515,14 +493,10 @@ g_dbus_error_set_dbus_error_valist (GError      **error,
   if (error == NULL)
     return;
 
-  new_error = g_dbus_error_new_for_dbus_error_valist (dbus_error,
+  new_error = _g_dbus_error_new_for_dbus_error_valist (dbus_error,
                                                       error_types,
                                                       prepend_format,
                                                       va_args);
   *error = new_error;
 }
 
-
-
-#define __G_DBUS_ERROR_C__
-#include "gdbusaliasdef.c"

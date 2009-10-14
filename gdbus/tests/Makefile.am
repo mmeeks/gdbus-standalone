@@ -9,7 +9,6 @@ INCLUDES =                      \
 	$(GOBJECT2_CFLAGS)	\
 	$(GIO2_CFLAGS)		\
 	$(GTHREAD2_CFLAGS)	\
-	$(DBUS1_CFLAGS)		\
 	$(NULL)
 
 noinst_PROGRAMS = $(TEST_PROGS)
@@ -44,4 +43,5 @@ threading_SOURCES = threading.c sessionbus.c sessionbus.h tests.h tests.c
 threading_LDADD = $(progs_ldadd)
 
 export_SOURCES = export.c sessionbus.c sessionbus.h tests.h tests.c
+export_CFLAGS = $(DBUS1_CFLAGS)
 export_LDADD = $(progs_ldadd)

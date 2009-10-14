@@ -33,8 +33,6 @@
 #include "gdbusproxy.h"
 #include "gdbusnamewatching.h"
 
-#include "gdbusalias.h"
-
 /**
  * SECTION:gdbusproxywatching
  * @title: Watching Proxies
@@ -381,6 +379,3 @@ g_bus_unwatch_proxy (guint watcher_id)
       client_free (client);
     }
 }
-
-#define __G_DBUS_PROXY_WATCHING_C__
-#include "gdbusaliasdef.c"

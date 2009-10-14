@@ -146,12 +146,20 @@ gboolean         g_dbus_connection_unregister_object          (GDBusConnection  
 
 /* TODO: make it possible to export a subtree (cf. dbus_connection_register_fallback()) */
 
-void      g_dbus_connection_invoke_method                     (GDBusConnection    *connection,
+gboolean  g_dbus_connection_emit_signal                       (GDBusConnection    *connection,
+                                                               const gchar        *destination_bus_name,
+                                                               const gchar        *object_path,
+                                                               const gchar        *interface_name,
+                                                               const gchar        *signal_name,
+                                                               GVariant           *parameters,
+                                                               GError            **error);
+gboolean  g_dbus_connection_invoke_method                     (GDBusConnection    *connection,
                                                                const gchar        *bus_name,
                                                                const gchar        *object_path,
                                                                const gchar        *interface_name,
                                                                const gchar        *method_name,
-                                                               GVariant           *parameters);
+                                                               GVariant           *parameters,
+                                                               GError            **error);
 void      g_dbus_connection_invoke_method_with_reply          (GDBusConnection    *connection,
                                                                const gchar        *bus_name,
                                                                const gchar        *object_path,
@@ -180,17 +188,21 @@ GVariant *g_dbus_connection_invoke_method_with_reply_sync     (GDBusConnection  
 /**
  * GDBusSignalCallback:
  * @connection: A #GDBusConnection.
- * @name: The name of the signal.
- * @signature: The signature of the signal.
- * @args: A #GPtrArray containing one #GDBusVariant for each argument of the signal.
+ * @sender_name: The unique bus name of the sender of the signal.
+ * @object_path: The object path that the signal was emitted on.
+ * @interface_name: The name of the signal.
+ * @signal_name: The name of the signal.
+ * @parameters: A #GVariant tuple with parameters for the signal.
  * @user_data: User data passed when subscribing to the signal.
  *
  * Signature for callback function used in g_dbus_connection_signal_subscribe().
  */
 typedef void (*GDBusSignalCallback) (GDBusConnection  *connection,
-                                     const gchar      *name,
-                                     const gchar      *signature,
-                                     GPtrArray        *args,
+                                     const gchar      *sender_name,
+                                     const gchar      *object_path,
+                                     const gchar      *interface_name,
+                                     const gchar      *signal_name,
+                                     GVariant         *parameters,
                                      gpointer          user_data);
 
 guint            g_dbus_connection_signal_subscribe           (GDBusConnection     *connection,

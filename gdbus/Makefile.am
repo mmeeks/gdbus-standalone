@@ -41,8 +41,6 @@ gdbus_headers =				\
 	gdbusnamewatching.h		\
 	gdbusproxywatching.h		\
 	gdbusproxy.h			\
-	gdbusstructure.h		\
-	gdbusvariant.h			\
 	gdbusintrospection.h		\
 	$(NULL)
 
@@ -52,24 +50,15 @@ libgdbus_standalone_la_SOURCES =					\
 	gdbusenumtypes.h						\
 	gdbus-marshal.h 		gdbus-marshal.c 		\
 	gdbusenumtypes.h		gdbusenumtypes.c		\
-	gdbuserror-lowlevel.h						\
 	gdbuserror.h			gdbuserror.c			\
-	gdbusmainloop-lowlevel.h	gdbusmainloop.c			\
-	gdbusctypemapping-lowlevel.h					\
-					gdbusctypemapping.c		\
-	gdbusconnection-lowlevel.h					\
 	gdbusconnection.h		gdbusconnection.c		\
 	gdbusnameowning.h		gdbusnameowning.c		\
 	gdbusnamewatching.h		gdbusnamewatching.c		\
 	gdbusproxywatching.h		gdbusproxywatching.c		\
 	gdbusproxy.h			gdbusproxy.c			\
-	gdbusstructure.h		gdbusstructure.c		\
-	gdbusvariant.h			gdbusvariant.c			\
 	gdbusprivate.h			gdbusprivate.c			\
 	gdbusintrospection.h		gdbusintrospection.c		\
 	gdbusconversion.h		gdbusconversion.c		\
-	gdbusalias.h 							\
-	gdbusaliasdef.c							\
 	$(NULL)
 
 $(libgdbus_standalone_la_OBJECTS): $(marshal_sources)
@@ -108,25 +97,10 @@ gdbusinclude_HEADERS = 			\
 	gdbusenumtypes.h		\
 	$(NULL)
 
-gdbuslowlevel_headers = 		\
-	gdbus-lowlevel.h		\
-	gdbuserror-lowlevel.h		\
-	gdbusconnection-lowlevel.h	\
-	gdbusmainloop-lowlevel.h	\
-	gdbusctypemapping-lowlevel.h	\
-	$(NULL)
-
-gdbuslowlevelincludedir=$(includedir)/dbus-1.0/gdbus-lowlevel-standalone/gdbus
-gdbuslowlevelinclude_HEADERS = 			\
-		$(gdbuslowlevel_headers)	\
-		$(NULL)
-
 # these sources (also mentioned above) are generated.
 BUILT_SOURCES = 			\
 	gdbus-marshal.h 		\
 	gdbus-marshal.c 		\
-	gdbusalias.h 			\
-	gdbusaliasdef.c			\
 	gdbusenumtypes.h		\
 	gdbusenumtypes.c		\
 	$(NULL)

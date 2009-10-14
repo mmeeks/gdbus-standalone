@@ -28,7 +28,7 @@
 #define __G_DBUS_CONVERSION_H__
 
 #include <gdbus/gdbustypes.h>
-#include <gdbus/gdbusconnection-lowlevel.h>
+#include <dbus/dbus.h>
 
 G_BEGIN_DECLS
 

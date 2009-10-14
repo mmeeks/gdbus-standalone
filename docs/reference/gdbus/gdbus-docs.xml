@@ -16,9 +16,9 @@
   <title>API Reference</title>
     <chapter id="lowlevel">
         <title>Low-level GDBus</title>
-        <xi:include href="xml/gdbusmainloop.xml"/>
         <xi:include href="xml/gdbuserror.xml"/>
         <xi:include href="xml/gdbusconnection.xml"/>
+        <xi:include href="xml/gdbusproxy.xml"/>
     </chapter>
     <chapter id="convenience">
         <title>GDBus Convenience</title>
@@ -26,13 +26,6 @@
         <xi:include href="xml/gdbusnamewatching.xml"/>
         <xi:include href="xml/gdbusproxywatching.xml"/>
         <xi:include href="xml/gdbusintrospection.xml"/>
-    </chapter>
-    <chapter id="cmapping">
-        <title>C Object Mapping</title>
-        <xi:include href="xml/gdbusctypemapping.xml"/>
-        <xi:include href="xml/gdbusproxy.xml"/>
-        <xi:include href="xml/gdbusvariant.xml"/>
-        <xi:include href="xml/gdbusstructure.xml"/>
     </chapter>
   </part>
 

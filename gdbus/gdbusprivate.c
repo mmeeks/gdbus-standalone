@@ -31,8 +31,6 @@
 
 #include "gdbustypes.h"
 #include "gdbusprivate.h"
-#include "gdbusvariant.h"
-#include "gdbusstructure.h"
 
 void
 _g_dbus_oom (void)
@@ -43,501 +41,739 @@ _g_dbus_oom (void)
 }
 
 /* ---------------------------------------------------------------------------------------------------- */
-
-/**
- * _gdbus_signature_vararg_foreach:
- * @signature: A D-Bus signature of zero or more single complete types.
- * @first_type: First #GType to match up.
- * @va_args: The value of the first in argument, followed by zero or more (type, value) pairs, followed
- * by #G_TYPE_INVALID.
- * @callback: Callback function.
- * @user_data: User data to pass to @callback.
+/* The following code is adopted from dbus/dbus-gmain.c in dbus-glib. Copright notices
+ * and license:
  *
- * Splits up @signature into single complete types, matches each single complete type with
- * the #GType<!-- -->s and values from @first_type, @va_args and invokes @callback for each
- * matching pair.
+ * Copyright (C) 2002, 2003 CodeFactory AB
+ * Copyright (C) 2005 Red Hat, Inc.
  *
- * Returns: %TRUE if @callback short-circuited the matching, %FALSE otherwise.
+ * Licensed under the Academic Free License version 2.1
+ *
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation; either version 2 of the License, or
+ * (at your option) any later version.
  */
-gboolean
-_gdbus_signature_vararg_foreach (const gchar                         *signature,
-                                 GType                                first_type,
-                                 va_list                              va_args,
-                                 _GDBusSignatureVarargForeachCallback callback,
-                                 gpointer                             user_data)
+
+typedef struct
 {
-  DBusSignatureIter iter;
-  gchar *element_signature;
-  gboolean ret;
-  GType gtype;
-  guint arg_num;
+  GSource source; /**< the parent GSource */
+  DBusConnection *connection; /**< the connection to dispatch */
+} DBusGMessageQueue;
 
-  g_assert (dbus_signature_validate (signature, NULL));
+static gboolean message_queue_prepare  (GSource     *source,
+                                        gint        *timeout);
+static gboolean message_queue_check    (GSource     *source);
+static gboolean message_queue_dispatch (GSource     *source,
+                                        GSourceFunc  callback,
+                                        gpointer     user_data);
 
-  ret = FALSE;
+static const GSourceFuncs message_queue_funcs = {
+  message_queue_prepare,
+  message_queue_check,
+  message_queue_dispatch,
+  NULL
+};
 
-  if (strlen (signature) == 0)
-      goto out;
+static gboolean
+message_queue_prepare (GSource *source,
+                       gint    *timeout)
+{
+  DBusConnection *connection = ((DBusGMessageQueue *)source)->connection;
 
-  g_assert (first_type != G_TYPE_INVALID);
+  *timeout = -1;
 
-  dbus_signature_iter_init (&iter, signature);
-
-  gtype = first_type;
-  arg_num = 0;
-  do
-    {
-      if (arg_num > 0)
-        gtype = va_arg (va_args, GType);
-
-      element_signature = dbus_signature_iter_get_signature (&iter);
-
-      ret = callback (arg_num,
-                      element_signature,
-                      gtype,
-                      va_args,
-                      user_data);
-      dbus_free (element_signature);
-
-      if (ret)
-        goto out;
-
-      arg_num++;
-    }
-  while (dbus_signature_iter_next (&iter));
-
- out:
-  return ret;
+  return (dbus_connection_get_dispatch_status (connection) == DBUS_DISPATCH_DATA_REMAINS);
 }
 
-/* ---------------------------------------------------------------------------------------------------- */
-
-gboolean
-_g_strv_equal (gchar **strv1,
-               gchar **strv2)
+static gboolean
+message_queue_check (GSource *source)
 {
-  guint n;
+  return FALSE;
+}
 
-  if (strv1 == NULL && strv2 == NULL)
-    return TRUE;
-  if (strv1 == NULL || strv2 == NULL)
-    return FALSE;
+static gboolean
+message_queue_dispatch (GSource     *source,
+                        GSourceFunc  callback,
+                        gpointer     user_data)
+{
+  DBusConnection *connection = ((DBusGMessageQueue *)source)->connection;
 
-  for (n = 0; strv1[n] != NULL && strv2[n] != NULL; n++)
-    {
-      if (g_strcmp0 (strv1[n], strv2[n]) != 0)
-        return FALSE;
-    }
-  if (strv1[n] != NULL || strv2[n] != NULL)
-    return FALSE;
+  dbus_connection_ref (connection);
+
+  /* Only dispatch once - we don't want to starve other GSource */
+  dbus_connection_dispatch (connection);
+
+  dbus_connection_unref (connection);
 
   return TRUE;
 }
 
-gboolean
-_g_array_equal (GArray *array1,
-                GArray *array2)
+typedef struct
 {
-  if (array1 == NULL && array2 == NULL)
-    return TRUE;
-  if (array1 == NULL || array2 == NULL)
-    return FALSE;
+  GMainContext *context;      /**< the main context */
+  GSList *ios;                /**< all IOHandler */
+  GSList *timeouts;           /**< all TimeoutHandler */
+  DBusConnection *connection; /**< NULL if this is really for a server not a connection */
+  GSource *message_queue_source; /**< DBusGMessageQueue */
+} ConnectionSetup;
 
-  if (array1->len != array2->len)
-    return FALSE;
 
-  if (array1->len == 0)
-    return TRUE;
+typedef struct
+{
+  ConnectionSetup *cs;
+  GSource *source;
+  DBusWatch *watch;
+} IOHandler;
 
-  if (g_array_get_element_size (array1) != g_array_get_element_size (array2))
-    return FALSE;
+typedef struct
+{
+  ConnectionSetup *cs;
+  GSource *source;
+  DBusTimeout *timeout;
+} TimeoutHandler;
 
-  return memcmp (array1->data, array2->data, g_array_get_element_size (array1) * array1->len) == 0;
+G_LOCK_DEFINE_STATIC (main_loop_lock);
+
+dbus_int32_t _dbus_gmain_connection_slot = -1;
+static dbus_int32_t server_slot = -1;
+
+static ConnectionSetup*
+connection_setup_new (GMainContext   *context,
+                      DBusConnection *connection)
+{
+  ConnectionSetup *cs;
+
+  cs = g_new0 (ConnectionSetup, 1);
+
+  g_assert (context != NULL);
+
+  cs->context = context;
+  g_main_context_ref (cs->context);
+
+  if (connection)
+    {
+      cs->connection = connection;
+
+      cs->message_queue_source = g_source_new ((GSourceFuncs *) &message_queue_funcs,
+                                               sizeof (DBusGMessageQueue));
+      ((DBusGMessageQueue*)cs->message_queue_source)->connection = connection;
+      g_source_attach (cs->message_queue_source, cs->context);
+    }
+
+  return cs;
+}
+
+static void
+io_handler_source_finalized (gpointer data)
+{
+  IOHandler *handler;
+
+  handler = data;
+
+  if (handler->watch)
+    dbus_watch_set_data (handler->watch, NULL, NULL);
+
+  g_free (handler);
+}
+
+static void
+io_handler_destroy_source (void *data)
+{
+  IOHandler *handler;
+
+  handler = data;
+
+  if (handler->source)
+    {
+      GSource *source = handler->source;
+      handler->source = NULL;
+      handler->cs->ios = g_slist_remove (handler->cs->ios, handler);
+      g_source_destroy (source);
+      g_source_unref (source);
+    }
+}
+
+static void
+io_handler_watch_freed (void *data)
+{
+  IOHandler *handler;
+
+  handler = data;
+
+  handler->watch = NULL;
+
+  io_handler_destroy_source (handler);
 }
 
 static gboolean
-values_equal (gpointer     value1,
-              gpointer     value2,
-              const gchar *signature)
+io_handler_dispatch (GIOChannel   *source,
+                     GIOCondition  condition,
+                     gpointer      data)
 {
-  gboolean ret;
+  IOHandler *handler;
+  guint dbus_condition = 0;
+  DBusConnection *connection;
 
-  ret = FALSE;
-  switch (signature[0])
-    {
-    case DBUS_TYPE_BYTE:
-    case DBUS_TYPE_BOOLEAN:
-    case DBUS_TYPE_INT16:
-    case DBUS_TYPE_UINT16:
-    case DBUS_TYPE_INT32:
-    case DBUS_TYPE_UINT32:
-      ret = (value1 == value2);
-      break;
+  handler = data;
 
-    case DBUS_TYPE_OBJECT_PATH:
-    case DBUS_TYPE_SIGNATURE:
-    case DBUS_TYPE_STRING:
-      ret = (strcmp (value1, value2) == 0);
-      break;
+  connection = handler->cs->connection;
 
-    case DBUS_TYPE_INT64:
-    case DBUS_TYPE_UINT64:
-      ret = (*((const gint64*) value1) == *((const gint64*) value2));
-      break;
+  if (connection)
+    dbus_connection_ref (connection);
 
-    case DBUS_TYPE_DOUBLE:
-      ret = (*((const gdouble*) value1) == *((const gdouble*) value2));
-      break;
+  if (condition & G_IO_IN)
+    dbus_condition |= DBUS_WATCH_READABLE;
+  if (condition & G_IO_OUT)
+    dbus_condition |= DBUS_WATCH_WRITABLE;
+  if (condition & G_IO_ERR)
+    dbus_condition |= DBUS_WATCH_ERROR;
+  if (condition & G_IO_HUP)
+    dbus_condition |= DBUS_WATCH_HANGUP;
 
-    case DBUS_TYPE_VARIANT:
-      ret = g_dbus_variant_equal (value1, value2);
-      break;
+  /* Note that we don't touch the handler after this, because
+   * dbus may have disabled the watch and thus killed the
+   * handler.
+   */
+  dbus_watch_handle (handler->watch, dbus_condition);
+  handler = NULL;
 
-    case DBUS_STRUCT_BEGIN_CHAR:
-      ret = g_dbus_structure_equal (value1, value2);
-      break;
+  if (connection)
+    dbus_connection_unref (connection);
 
-    case DBUS_TYPE_ARRAY:
-      switch (signature[1])
-        {
-        case DBUS_TYPE_BYTE:
-        case DBUS_TYPE_BOOLEAN:
-        case DBUS_TYPE_INT16:
-        case DBUS_TYPE_UINT16:
-        case DBUS_TYPE_INT32:
-        case DBUS_TYPE_UINT32:
-        case DBUS_TYPE_INT64:
-        case DBUS_TYPE_UINT64:
-        case DBUS_TYPE_DOUBLE:
-          ret = _g_array_equal (value1, value2);
-          break;
-
-        case DBUS_TYPE_OBJECT_PATH:
-        case DBUS_TYPE_SIGNATURE:
-        case DBUS_TYPE_STRING:
-          ret = _g_strv_equal (value1, value2);
-          break;
-
-        case DBUS_STRUCT_BEGIN_CHAR:
-        case DBUS_TYPE_VARIANT:
-          ret = _g_ptr_array_equal (value1, value2, signature + 1);
-          break;
-
-        case DBUS_DICT_ENTRY_BEGIN_CHAR:
-          {
-            char key_sig[2];
-            char *val_sig;
-
-            /* keys are guaranteed by the D-Bus spec to be primitive types */
-            key_sig[0] = signature[2];
-            key_sig[1] = '\0';
-            val_sig = g_strdup (signature + 3);
-            val_sig[strlen (val_sig) - 1] = '\0';
-
-            ret = _g_hash_table_equal (value1, value2, key_sig, val_sig);
-            g_free (val_sig);
-          }
-          break;
-
-        default:
-          g_assert_not_reached ();
-          break;
-        }
-      break;
-
-    default:
-      g_assert_not_reached ();
-      break;
-    }
-
-  return ret;
+  return TRUE;
 }
 
-gboolean
-_g_ptr_array_equal (GPtrArray *array1,
-                    GPtrArray *array2,
-                    const gchar *element_signature)
+static void
+connection_setup_add_watch (ConnectionSetup *cs,
+                            DBusWatch       *watch)
 {
-  gboolean ret;
-  guint n;
+  guint flags;
+  GIOCondition condition;
+  GIOChannel *channel;
+  IOHandler *handler;
 
-  if (array1 == NULL && array2 == NULL)
-    return TRUE;
-  if (array1 == NULL || array2 == NULL)
-    return FALSE;
+  if (!dbus_watch_get_enabled (watch))
+    return;
 
-  if (array1->len != array2->len)
-    return FALSE;
+  g_assert (dbus_watch_get_data (watch) == NULL);
 
-  if (array1->len == 0)
-    return TRUE;
+  flags = dbus_watch_get_flags (watch);
 
-  ret = FALSE;
+  condition = G_IO_ERR | G_IO_HUP;
+  if (flags & DBUS_WATCH_READABLE)
+    condition |= G_IO_IN;
+  if (flags & DBUS_WATCH_WRITABLE)
+    condition |= G_IO_OUT;
 
-  for (n = 0; n < array1->len; n++)
-    {
-      gpointer value1 = array1->pdata[n];
-      gpointer value2 = array2->pdata[n];
+  handler = g_new0 (IOHandler, 1);
+  handler->cs = cs;
+  handler->watch = watch;
 
-      if (!values_equal (value1, value2, element_signature))
-        goto out;
+  channel = g_io_channel_unix_new (dbus_watch_get_unix_fd (watch));
 
-    }
+  handler->source = g_io_create_watch (channel, condition);
+  g_source_set_callback (handler->source, (GSourceFunc) io_handler_dispatch, handler,
+                         io_handler_source_finalized);
+  g_source_attach (handler->source, cs->context);
 
-  ret = TRUE;
+  cs->ios = g_slist_prepend (cs->ios, handler);
 
- out:
-  return ret;
+  dbus_watch_set_data (watch, handler, io_handler_watch_freed);
+  g_io_channel_unref (channel);
 }
 
-gboolean
-_g_hash_table_equal (GHashTable *hash1,
-                     GHashTable *hash2,
-                     const gchar *key_signature,
-                     const gchar *value_signature)
+static void
+connection_setup_remove_watch (ConnectionSetup *cs,
+                               DBusWatch       *watch)
 {
-  gboolean ret;
-  GHashTableIter iter;
-  gpointer key1;
-  gpointer value1;
-  gpointer value2;
+  IOHandler *handler;
 
-  if (hash1 == NULL && hash2 == NULL)
-    return TRUE;
-  if (hash1 == NULL || hash2 == NULL)
-    return FALSE;
+  handler = dbus_watch_get_data (watch);
 
-  if (g_hash_table_size (hash1) != g_hash_table_size (hash2))
-    return FALSE;
+  if (handler == NULL)
+    return;
 
-  if (g_hash_table_size (hash1) == 0)
-    return TRUE;
-
-  ret = FALSE;
-
-  g_hash_table_iter_init (&iter, hash1);
-  while (g_hash_table_iter_next (&iter, &key1, &value1))
-    {
-      /* this takes care of comparing the keys (relying on the hashes being set up correctly) */
-      if (!g_hash_table_lookup_extended (hash2, key1, NULL, &value2))
-        goto out;
-
-      if (!values_equal (value1, value2, value_signature))
-        goto out;
-    }
-
-  ret = TRUE;
-
- out:
-  return ret;
+  io_handler_destroy_source (handler);
 }
 
-/* ---------------------------------------------------------------------------------------------------- */
-
-/* this equal func only works for GValue instances used by GDBus */
-gboolean
-_g_dbus_gvalue_equal (const GValue *value1,
-                      const GValue *value2,
-                      const gchar  *signature)
+static void
+timeout_handler_source_finalized (gpointer data)
 {
-  GType type;
-  gboolean ret;
+  TimeoutHandler *handler;
 
-  if (value1 == NULL && value2 == NULL)
-    return TRUE;
-  if (value1 == NULL || value2 == NULL)
-    return FALSE;
+  handler = data;
 
-  if (G_VALUE_TYPE (value1) != G_VALUE_TYPE (value2))
-    return FALSE;
+  if (handler->timeout)
+    dbus_timeout_set_data (handler->timeout, NULL, NULL);
 
-  ret = FALSE;
-  type = G_VALUE_TYPE (value1);
-  switch (type)
+  g_free (handler);
+}
+
+static void
+timeout_handler_destroy_source (void *data)
+{
+  TimeoutHandler *handler;
+
+  handler = data;
+
+  if (handler->source)
     {
-    case G_TYPE_UCHAR:
-      ret = (g_value_get_uchar (value1) == g_value_get_uchar (value2));
-      break;
+      GSource *source = handler->source;
+      handler->source = NULL;
+      handler->cs->timeouts = g_slist_remove (handler->cs->timeouts, handler);
+      g_source_destroy (source);
+      g_source_unref (source);
+    }
+}
 
-    case G_TYPE_BOOLEAN:
-      ret = (g_value_get_boolean (value1) == g_value_get_boolean (value2));
-      break;
+static void
+timeout_handler_timeout_freed (void *data)
+{
+  TimeoutHandler *handler;
 
-    case G_TYPE_INT: // TODO:16
-      ret = (g_value_get_int (value1) == g_value_get_int (value2));
-      break;
+  handler = data;
 
-    case G_TYPE_UINT:
-      ret = (g_value_get_uint (value1) == g_value_get_uint (value2));
-      break;
+  handler->timeout = NULL;
 
-    case G_TYPE_INT64:
-      ret = (g_value_get_int64 (value1) == g_value_get_int64 (value2));
-      break;
+  timeout_handler_destroy_source (handler);
+}
 
-    case G_TYPE_UINT64:
-      ret = (g_value_get_uint64 (value1) == g_value_get_uint64 (value2));
-      break;
+static gboolean
+timeout_handler_dispatch (gpointer      data)
+{
+  TimeoutHandler *handler;
 
-    case G_TYPE_DOUBLE:
-      ret = (g_value_get_double (value1) == g_value_get_double (value2));
-      break;
+  handler = data;
 
-    case G_TYPE_STRING: // TODO:o TODO:g
-      ret = (g_strcmp0 (g_value_get_string (value1), g_value_get_string (value2)) == 0);
-      break;
+  dbus_timeout_handle (handler->timeout);
 
-    default:
-      if (type == G_TYPE_STRV) // TODO:ao TODO:ag
-        ret = _g_strv_equal (g_value_get_boxed (value1),
-                             g_value_get_boxed (value2));
-      else if (type == G_TYPE_ARRAY)
-        ret = _g_array_equal (g_value_get_boxed (value1),
-                              g_value_get_boxed (value2));
-      else if (type == G_TYPE_PTR_ARRAY)
-        ret = _g_ptr_array_equal (g_value_get_boxed (value1),
-                                  g_value_get_boxed (value2),
-                                  signature + 1);
-      else if (type == G_TYPE_HASH_TABLE)
-        {
-          char key_sig[2];
-          char *val_sig;
+  return TRUE;
+}
 
-          /* keys are guaranteed by the D-Bus spec to be primitive types */
-          key_sig[0] = signature[2];
-          key_sig[1] = '\0';
-          val_sig = g_strdup (signature + 3);
-          val_sig[strlen (val_sig) - 1] = '\0';
+static void
+connection_setup_add_timeout (ConnectionSetup *cs,
+                              DBusTimeout     *timeout)
+{
+  TimeoutHandler *handler;
 
-          ret = _g_hash_table_equal (g_value_get_boxed (value1),
-                                     g_value_get_boxed (value2),
-                                     key_sig,
-                                     val_sig);
-          g_free (val_sig);
-        }
-      else if (type == G_TYPE_DBUS_STRUCTURE)
-        {
-          ret = g_dbus_structure_equal (g_value_get_object (value1),
-                                        g_value_get_object (value2));
-        }
-      else
-        g_assert_not_reached ();
-      break;
+  if (!dbus_timeout_get_enabled (timeout))
+    return;
+
+  g_assert (dbus_timeout_get_data (timeout) == NULL);
+
+  handler = g_new0 (TimeoutHandler, 1);
+  handler->cs = cs;
+  handler->timeout = timeout;
+
+  handler->source = g_timeout_source_new (dbus_timeout_get_interval (timeout));
+  g_source_set_callback (handler->source, timeout_handler_dispatch, handler,
+                         timeout_handler_source_finalized);
+  g_source_attach (handler->source, handler->cs->context);
+
+  cs->timeouts = g_slist_prepend (cs->timeouts, handler);
+
+  dbus_timeout_set_data (timeout, handler, timeout_handler_timeout_freed);
+}
+
+static void
+connection_setup_remove_timeout (ConnectionSetup *cs,
+                                 DBusTimeout       *timeout)
+{
+  TimeoutHandler *handler;
+
+  handler = dbus_timeout_get_data (timeout);
+
+  if (handler == NULL)
+    return;
+
+  timeout_handler_destroy_source (handler);
+}
+
+static void
+connection_setup_free (ConnectionSetup *cs)
+{
+  while (cs->ios)
+    io_handler_destroy_source (cs->ios->data);
+
+  while (cs->timeouts)
+    timeout_handler_destroy_source (cs->timeouts->data);
+
+  if (cs->message_queue_source)
+    {
+      GSource *source;
+
+      source = cs->message_queue_source;
+      cs->message_queue_source = NULL;
+
+      g_source_destroy (source);
+      g_source_unref (source);
     }
 
-  return ret;
+  g_main_context_unref (cs->context);
+  g_free (cs);
+}
+
+static dbus_bool_t
+add_watch (DBusWatch *watch,
+           gpointer   data)
+{
+  ConnectionSetup *cs;
+
+  cs = data;
+
+  connection_setup_add_watch (cs, watch);
+
+  return TRUE;
+}
+
+static void
+remove_watch (DBusWatch *watch,
+              gpointer   data)
+{
+  ConnectionSetup *cs;
+
+  cs = data;
+
+  connection_setup_remove_watch (cs, watch);
+}
+
+static void
+watch_toggled (DBusWatch *watch,
+               void      *data)
+{
+  /* Because we just exit on OOM, enable/disable is
+   * no different from add/remove
+   */
+  if (dbus_watch_get_enabled (watch))
+    add_watch (watch, data);
+  else
+    remove_watch (watch, data);
+}
+
+static dbus_bool_t
+add_timeout (DBusTimeout *timeout,
+             void        *data)
+{
+  ConnectionSetup *cs;
+
+  cs = data;
+
+  if (!dbus_timeout_get_enabled (timeout))
+    return TRUE;
+
+  connection_setup_add_timeout (cs, timeout);
+
+  return TRUE;
+}
+
+static void
+remove_timeout (DBusTimeout *timeout,
+                void        *data)
+{
+  ConnectionSetup *cs;
+
+  cs = data;
+
+  connection_setup_remove_timeout (cs, timeout);
+}
+
+static void
+timeout_toggled (DBusTimeout *timeout,
+                 void        *data)
+{
+  /* Because we just exit on OOM, enable/disable is
+   * no different from add/remove
+   */
+  if (dbus_timeout_get_enabled (timeout))
+    add_timeout (timeout, data);
+  else
+    remove_timeout (timeout, data);
+}
+
+static void
+wakeup_main (void *data)
+{
+  ConnectionSetup *cs = data;
+
+  g_main_context_wakeup (cs->context);
+}
+
+
+/* Move to a new context */
+static ConnectionSetup*
+connection_setup_new_from_old (GMainContext    *context,
+                               ConnectionSetup *old)
+{
+  GSList *tmp;
+  ConnectionSetup *cs;
+
+  g_assert (old->context != context);
+
+  cs = connection_setup_new (context, old->connection);
+
+  tmp = old->ios;
+  while (tmp != NULL)
+    {
+      IOHandler *handler = tmp->data;
+
+      connection_setup_add_watch (cs, handler->watch);
+
+      tmp = tmp->next;
+    }
+
+  tmp = old->timeouts;
+  while (tmp != NULL)
+    {
+      TimeoutHandler *handler = tmp->data;
+
+      connection_setup_add_timeout (cs, handler->timeout);
+
+      tmp = tmp->next;
+    }
+
+  return cs;
+}
+
+static void
+ensure_slots (void)
+{
+  G_LOCK (main_loop_lock);
+  if (_dbus_gmain_connection_slot < 0)
+    {
+      dbus_connection_allocate_data_slot (&_dbus_gmain_connection_slot);
+      if (_dbus_gmain_connection_slot < 0)
+        {
+          G_UNLOCK (main_loop_lock);
+          _g_dbus_oom ();
+        }
+    }
+  if (server_slot < 0)
+    {
+      dbus_server_allocate_data_slot (&server_slot);
+      if (server_slot < 0)
+        {
+          G_UNLOCK (main_loop_lock);
+          _g_dbus_oom ();
+        }
+    }
+  G_UNLOCK (main_loop_lock);
 }
 
 /**
- * _g_dbus_signature_get_gtype:
- * @signature: A D-Bus signature
+ * _g_dbus_integrate_dbus_1_connection:
+ * @connection: A #DBusConnection.
+ * @context: the #GMainContext or #NULL for default context
  *
- * Returns the #GType to use for @signature.
+ * Sets the watch and timeout functions of @connection to integrate
+ * the connection with the GLib main loop.  Pass in #NULL for the
+ * #GMainContext unless you're doing something specialized.
  *
- * Returns: A #GType.
- **/
-GType
-_g_dbus_signature_get_gtype (const gchar *signature)
+ * If called twice for the same context, does nothing the second
+ * time. If called once with context A and once with context B,
+ * context B replaces context A as the context monitoring the
+ * connection.
+ */
+void
+_g_dbus_integrate_dbus_1_connection (DBusConnection *connection,
+                                     GMainContext   *context)
 {
-  GType ret;
+  ConnectionSetup *old_setup;
+  ConnectionSetup *cs;
 
-  ret = G_TYPE_INVALID;
+  ensure_slots ();
 
-  switch (signature[0])
+  if (context == NULL)
+    context = g_main_context_default ();
+
+  cs = NULL;
+
+  old_setup = dbus_connection_get_data (connection, _dbus_gmain_connection_slot);
+  if (old_setup != NULL)
     {
-    case DBUS_TYPE_BYTE:
-      ret = G_TYPE_UCHAR;
-      break;
+      if (old_setup->context == context)
+        return; /* nothing to do */
 
-    case DBUS_TYPE_BOOLEAN:
-      ret = G_TYPE_BOOLEAN;
-      break;
+      cs = connection_setup_new_from_old (context, old_setup);
 
-    case DBUS_TYPE_INT16:
-      ret = G_TYPE_INT; // TODO:16
-      break;
-
-    case DBUS_TYPE_UINT16:
-      ret = G_TYPE_UINT; // TODO:16
-      break;
-
-    case DBUS_TYPE_INT32:
-      ret = G_TYPE_INT;
-      break;
-
-    case DBUS_TYPE_UINT32:
-      ret = G_TYPE_UINT;
-      break;
-
-    case DBUS_TYPE_INT64:
-      ret = G_TYPE_INT64;
-      break;
-
-    case DBUS_TYPE_UINT64:
-      ret = G_TYPE_UINT64;
-      break;
-
-    case DBUS_TYPE_DOUBLE:
-      ret = G_TYPE_DOUBLE;
-      break;
-
-    case DBUS_TYPE_VARIANT:
-      ret = G_TYPE_DBUS_VARIANT;
-      break;
-
-    case DBUS_STRUCT_BEGIN_CHAR:
-      ret = G_TYPE_DBUS_STRUCTURE;
-      break;
-
-    case DBUS_TYPE_OBJECT_PATH: // TODO:o
-    case DBUS_TYPE_SIGNATURE: // TODO:g
-    case DBUS_TYPE_STRING:
-      ret = G_TYPE_STRING;
-      break;
-
-    case DBUS_TYPE_ARRAY:
-      switch (signature[1])
-        {
-        case DBUS_TYPE_BYTE:
-        case DBUS_TYPE_BOOLEAN:
-        case DBUS_TYPE_INT16:
-        case DBUS_TYPE_UINT16:
-        case DBUS_TYPE_INT32:
-        case DBUS_TYPE_UINT32:
-        case DBUS_TYPE_INT64:
-        case DBUS_TYPE_UINT64:
-        case DBUS_TYPE_DOUBLE:
-          ret = G_TYPE_ARRAY;
-          break;
-
-        case DBUS_TYPE_OBJECT_PATH: // TODO:ao
-        case DBUS_TYPE_SIGNATURE: // TODO:ag
-        case DBUS_TYPE_STRING:
-          ret = G_TYPE_STRV;
-          break;
-
-        case DBUS_STRUCT_BEGIN_CHAR:
-        case DBUS_TYPE_VARIANT:
-        case DBUS_TYPE_ARRAY:
-          ret = G_TYPE_PTR_ARRAY;
-          break;
-
-        case DBUS_DICT_ENTRY_BEGIN_CHAR:
-          ret = G_TYPE_HASH_TABLE;
-          break;
-
-        default:
-          g_warning ("Failed determining GType for D-Bus array with signature '%s'", signature);
-          g_assert_not_reached ();
-          break;
-        }
-      break;
-
-    default:
-      g_warning ("Failed determining GType for D-Bus signature '%s'", signature);
-      g_assert_not_reached ();
-      break;
+      /* Nuke the old setup */
+      dbus_connection_set_data (connection, _dbus_gmain_connection_slot, NULL, NULL);
+      old_setup = NULL;
     }
 
-  return ret;
+  if (cs == NULL)
+    cs = connection_setup_new (context, connection);
+
+  if (!dbus_connection_set_data (connection, _dbus_gmain_connection_slot, cs,
+                                 (DBusFreeFunction)connection_setup_free))
+    goto nomem;
+
+  if (!dbus_connection_set_watch_functions (connection,
+                                            add_watch,
+                                            remove_watch,
+                                            watch_toggled,
+                                            cs, NULL))
+    goto nomem;
+
+  if (!dbus_connection_set_timeout_functions (connection,
+                                              add_timeout,
+                                              remove_timeout,
+                                              timeout_toggled,
+                                              cs, NULL))
+    goto nomem;
+
+  dbus_connection_set_wakeup_main_function (connection,
+                                            wakeup_main,
+                                            cs, NULL);
+
+  return;
+
+ nomem:
+  _g_dbus_oom ();
+}
+
+/**
+ * _g_dbus_unintegrate_dbus_1_connection:
+ * @connection: A #DBusConnection.
+ *
+ * Removes mainloop integration for @connection.
+ **/
+void
+_g_dbus_unintegrate_dbus_1_connection (DBusConnection *connection)
+{
+  ensure_slots ();
+
+  if (!dbus_connection_set_data (connection, _dbus_gmain_connection_slot, NULL,
+                                 NULL))
+    goto nomem;
+
+  if (!dbus_connection_set_watch_functions (connection,
+                                            NULL,
+                                            NULL,
+                                            NULL,
+                                            NULL, NULL))
+    goto nomem;
+
+  if (!dbus_connection_set_timeout_functions (connection,
+                                              NULL,
+                                              NULL,
+                                              NULL,
+                                              NULL, NULL))
+    goto nomem;
+
+  dbus_connection_set_wakeup_main_function (connection,
+                                            NULL,
+                                            NULL, NULL);
+
+  return;
+
+ nomem:
+  _g_dbus_oom ();
+}
+
+/**
+ * _g_dbus_integrate_dbus_1_server:
+ * @server: A #DBusServer.
+ * @context: the #GMainContext or #NULL for default
+ *
+ * Sets the watch and timeout functions of a #DBusServer
+ * to integrate the server with the GLib main loop.
+ * In most cases the context argument should be #NULL.
+ *
+ * If called twice for the same context, does nothing the second
+ * time. If called once with context A and once with context B,
+ * context B replaces context A as the context monitoring the
+ * connection.
+ */
+void
+_g_dbus_integrate_dbus_1_server (DBusServer   *server,
+                                 GMainContext *context)
+{
+  ConnectionSetup *old_setup;
+  ConnectionSetup *cs;
+
+  ensure_slots ();
+
+  dbus_server_allocate_data_slot (&server_slot);
+  if (server_slot < 0)
+    goto nomem;
+
+  if (context == NULL)
+    context = g_main_context_default ();
+
+  cs = NULL;
+
+  old_setup = dbus_server_get_data (server, server_slot);
+  if (old_setup != NULL)
+    {
+      if (old_setup->context == context)
+        return; /* nothing to do */
+
+      cs = connection_setup_new_from_old (context, old_setup);
+
+      /* Nuke the old setup */
+      dbus_server_set_data (server, server_slot, NULL, NULL);
+      old_setup = NULL;
+    }
+
+  if (cs == NULL)
+    cs = connection_setup_new (context, NULL);
+
+  if (!dbus_server_set_data (server, server_slot, cs,
+                             (DBusFreeFunction)connection_setup_free))
+    goto nomem;
+
+  if (!dbus_server_set_watch_functions (server,
+                                        add_watch,
+                                        remove_watch,
+                                        watch_toggled,
+                                        cs, NULL))
+    goto nomem;
+
+  if (!dbus_server_set_timeout_functions (server,
+                                          add_timeout,
+                                          remove_timeout,
+                                          timeout_toggled,
+                                          cs, NULL))
+    goto nomem;
+
+  return;
+
+ nomem:
+  _g_dbus_oom ();
+}
+
+/**
+ * _g_dbus_unintegrate_dbus_1_server:
+ * @server: A #DBusServer.
+ *
+ * Removes mainloop integration for @server.
+ **/
+void
+_g_dbus_unintegrate_dbus_1_server (DBusServer *server)
+{
+  ensure_slots ();
+
+  if (!dbus_server_set_data (server, server_slot, NULL,
+                             NULL))
+    goto nomem;
+
+  if (!dbus_server_set_watch_functions (server,
+                                        NULL,
+                                        NULL,
+                                        NULL,
+                                        NULL, NULL))
+    goto nomem;
+
+  if (!dbus_server_set_timeout_functions (server,
+                                          NULL,
+                                          NULL,
+                                          NULL,
+                                          NULL, NULL))
+    goto nomem;
+
+  return;
+
+ nomem:
+  _g_dbus_oom ();
 }

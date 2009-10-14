@@ -24,8 +24,6 @@
 #include <unistd.h>
 
 #include "tests.h"
-#define G_DBUS_I_UNDERSTAND_THAT_ABI_AND_API_IS_UNSTABLE
-#include <gdbus/gdbus-lowlevel.h>
 
 /* all tests rely on a shared mainloop */
 static GMainLoop *loop;
@@ -81,12 +79,10 @@ test_bus_own_name (void)
   OwnNameData data2;
   const gchar *name;
   GDBusConnection *c;
-  DBusMessage *m;
-  DBusMessage *r;
-  DBusError dbus_error;
   GError *error;
-  dbus_bool_t name_has_owner_reply;
+  gboolean name_has_owner_reply;
   GDBusConnection *c2;
+  GVariant *result;
 
   error = NULL;
   name = "org.gtk.GDBus.Name1";
@@ -139,29 +135,20 @@ test_bus_own_name (void)
   c = g_dbus_connection_bus_get_sync (G_BUS_TYPE_SESSION, NULL, NULL);
   g_assert (c != NULL);
   g_assert (!g_dbus_connection_get_is_disconnected (c));
-  m = dbus_message_new_method_call (DBUS_SERVICE_DBUS,
-                                    DBUS_PATH_DBUS,
-                                    DBUS_INTERFACE_DBUS,
-                                    "NameHasOwner");
-  dbus_message_append_args (m,
-                            DBUS_TYPE_STRING, &name,
-                            DBUS_TYPE_INVALID);
-  r = g_dbus_connection_send_dbus_1_message_with_reply_sync (c,
-                                                             m,
-                                                             -1,
-                                                             NULL,
-                                                             &error);
+  result = g_dbus_connection_invoke_method_with_reply_sync (c,
+                                                            "org.freedesktop.DBus",  /* bus name */
+                                                            "/org/freedesktop/DBus", /* object path */
+                                                            "org.freedesktop.DBus",  /* interface name */
+                                                            "NameHasOwner",          /* method name */
+                                                            g_variant_new ("(s)", name),
+                                                            -1,
+                                                            NULL,
+                                                            &error);
   g_assert_no_error (error);
-  g_assert (r != NULL);
-  dbus_error_init (&dbus_error);
-  dbus_message_get_args (r,
-                         &dbus_error,
-                         DBUS_TYPE_BOOLEAN, &name_has_owner_reply,
-                         DBUS_TYPE_INVALID);
-  g_assert (!dbus_error_is_set (&dbus_error));
+  g_assert (result != NULL);
+  g_variant_get (result, "(b)", &name_has_owner_reply);
   g_assert (name_has_owner_reply);
-  dbus_message_unref (m);
-  dbus_message_unref (r);
+  g_variant_unref (result);
 
   /**
    * Stop owning the name - this should trigger name_lost_handler() because of this
@@ -181,29 +168,20 @@ test_bus_own_name (void)
   /**
    * Check that the name was actually relased.
    */
-  m = dbus_message_new_method_call (DBUS_SERVICE_DBUS,
-                                    DBUS_PATH_DBUS,
-                                    DBUS_INTERFACE_DBUS,
-                                    "NameHasOwner");
-  dbus_message_append_args (m,
-                            DBUS_TYPE_STRING, &name,
-                            DBUS_TYPE_INVALID);
-  r = g_dbus_connection_send_dbus_1_message_with_reply_sync (c,
-                                                             m,
-                                                             -1,
-                                                             NULL,
-                                                             &error);
+  result = g_dbus_connection_invoke_method_with_reply_sync (c,
+                                                            "org.freedesktop.DBus",  /* bus name */
+                                                            "/org/freedesktop/DBus", /* object path */
+                                                            "org.freedesktop.DBus",  /* interface name */
+                                                            "NameHasOwner",          /* method name */
+                                                            g_variant_new ("(s)", name),
+                                                            -1,
+                                                            NULL,
+                                                            &error);
   g_assert_no_error (error);
-  g_assert (r != NULL);
-  dbus_error_init (&dbus_error);
-  dbus_message_get_args (r,
-                         &dbus_error,
-                         DBUS_TYPE_BOOLEAN, &name_has_owner_reply,
-                         DBUS_TYPE_INVALID);
-  g_assert (!dbus_error_is_set (&dbus_error));
+  g_assert (result != NULL);
+  g_variant_get (result, "(b)", &name_has_owner_reply);
   g_assert (!name_has_owner_reply);
-  dbus_message_unref (m);
-  dbus_message_unref (r);
+  g_variant_unref (result);
 
   /**
    * Own the name again.

@@ -27,15 +27,11 @@
 #include <glib/gi18n.h>
 
 #include "gdbusconnection.h"
-#include "gdbusconnection-lowlevel.h"
-#include "gdbusmainloop-lowlevel.h"
-#include "gdbusctypemapping-lowlevel.h"
 #include "gdbuserror.h"
 #include "gdbusenumtypes.h"
 #include "gdbusconversion.h"
+#include "gdbusintrospection.h"
 #include "gdbusprivate.h"
-
-#include "gdbusalias.h"
 
 /**
  * SECTION:gdbusconnection
@@ -74,6 +70,23 @@ struct _GDBusConnectionPrivate
   GHashTable *map_object_path_to_eo; /* gchar* -> ExportedObject* */
   GHashTable *map_id_to_ei;          /* guint -> ExportedInterface* */
 };
+
+static void         g_dbus_connection_send_dbus_1_message                      (GDBusConnection    *connection,
+                                                                                DBusMessage        *message);
+static void         g_dbus_connection_send_dbus_1_message_with_reply           (GDBusConnection    *connection,
+                                                                                DBusMessage        *message,
+                                                                                gint                timeout_msec,
+                                                                                GCancellable       *cancellable,
+                                                                                GAsyncReadyCallback callback,
+                                                                                gpointer            user_data);
+static DBusMessage *g_dbus_connection_send_dbus_1_message_with_reply_finish    (GDBusConnection    *connection,
+                                                                                GAsyncResult       *res,
+                                                                                GError            **error);
+static DBusMessage *g_dbus_connection_send_dbus_1_message_with_reply_sync      (GDBusConnection    *connection,
+                                                                                DBusMessage        *message,
+                                                                                gint                timeout_msec,
+                                                                                GCancellable       *cancellable,
+                                                                                GError            **error);
 
 typedef struct ExportedObject ExportedObject;
 static void exported_object_free (ExportedObject *eo);
@@ -445,27 +458,6 @@ g_dbus_connection_get_is_private (GDBusConnection *connection)
   return connection->priv->is_private;
 }
 
-/**
- * g_dbus_connection_get_dbus_1_connection:
- * @connection: A #GDBusConnection.
- *
- * <para><note>
- * This function is marked as unstable API. You must include <literal>gdbus/gdbus-lowlevel.h</literal> to use it.
- * </note></para>
- *
- * Gets the underlying #DBusConnection object for @connection.
- *
- * Returns: %NULL if the connection has been disconnected, otherwise a
- * #DBusConnection object owned by @connection.
- **/
-DBusConnection *
-g_dbus_connection_get_dbus_1_connection (GDBusConnection *connection)
-{
-  g_return_val_if_fail (G_IS_DBUS_CONNECTION (connection), NULL);
-
-  return connection->priv->dbus_1_connection;
-}
-
 /* ---------------------------------------------------------------------------------------------------- */
 
 #define PRINT_MESSAGE(message)                          \
@@ -563,7 +555,7 @@ g_dbus_connection_set_dbus_1_connection (GDBusConnection *connection,
       dbus_connection_remove_filter (connection->priv->dbus_1_connection,
                                      filter_function,
                                      connection);
-      g_dbus_unintegrate_dbus_1_connection (connection->priv->dbus_1_connection);
+      _g_dbus_unintegrate_dbus_1_connection (connection->priv->dbus_1_connection);
       if (connection->priv->is_private)
         {
           dbus_connection_close (connection->priv->dbus_1_connection);
@@ -578,7 +570,7 @@ g_dbus_connection_set_dbus_1_connection (GDBusConnection *connection,
   if (dbus_1_connection != NULL)
     {
       connection->priv->dbus_1_connection = dbus_connection_ref (dbus_1_connection);
-      g_dbus_integrate_dbus_1_connection (connection->priv->dbus_1_connection, NULL);
+      _g_dbus_integrate_dbus_1_connection (connection->priv->dbus_1_connection, NULL);
       if (!dbus_connection_add_filter (connection->priv->dbus_1_connection,
                                        filter_function,
                                        connection,
@@ -740,10 +732,10 @@ initable_init (GInitable       *initable,
     }
   else
     {
-      g_dbus_error_set_dbus_error (&connection->priv->initialization_error,
-                                   &dbus_error,
-                                   NULL,
-                                   NULL);
+      _g_dbus_error_set_dbus_error (&connection->priv->initialization_error,
+                                    &dbus_error,
+                                    NULL,
+                                    NULL);
       dbus_error_free (&dbus_error);
       g_propagate_error (error, g_error_copy (connection->priv->initialization_error));
     }
@@ -1074,20 +1066,7 @@ g_dbus_connection_get_unique_name (GDBusConnection *connection)
 
 /* ---------------------------------------------------------------------------------------------------- */
 
-/**
- * g_dbus_connection_send_dbus_1_message:
- * @connection: A #GDBusConnection.
- * @message: A #DBusMessage
- *
- * <para><note>
- * This function is marked as unstable API. You must include <literal>gdbus/gdbus-lowlevel.h</literal> to use it.
- * </note></para>
- *
- * Sends @message on @connection. If @connection is disconnected, this function is a no-op.
- *
- * This function is intended for use by object mappings only.
- **/
-void
+static void
 g_dbus_connection_send_dbus_1_message (GDBusConnection    *connection,
                                        DBusMessage        *message)
 {
@@ -1167,32 +1146,7 @@ send_dbus_1_message_with_reply_cancelled_cb (GCancellable *cancellable,
   g_idle_add (send_dbus_1_message_with_reply_cancelled_in_idle, simple);
 }
 
-/**
- * g_dbus_connection_send_dbus_1_message_with_reply:
- * @connection: A #GDBusConnection.
- * @message: A #DBusMessage
- * @timeout_msec: The timeout in milliseconds or -1 to use the default timeout.
- * @cancellable: A #GCancellable or %NULL.
- * @callback: Callback function to invoke when the reply is ready.
- * @user_data: User data to pass to @callback.
- *
- * <para><note>
- * This function is marked as unstable API. You must include <literal>gdbus/gdbus-lowlevel.h</literal> to use it.
- * </note></para>
- *
- * Asynchronously sends @message on @connection and invokes @callback when the reply is
- * ready. In @callback you should call g_dbus_connection_send_dbus_1_message_with_reply_finish() to
- * get the reply.
- *
- * Note that it is considered a programming error if @message is not a
- * method-call message.
- *
- * If @connection is disconnected then the operatoin will fail with %G_DBUS_ERROR_DISCONNECTED.
- *
- * This function is intended for use by object mappings only.
- *
- **/
-void
+static void
 g_dbus_connection_send_dbus_1_message_with_reply (GDBusConnection    *connection,
                                                   DBusMessage        *message,
                                                   gint                timeout_msec,
@@ -1289,30 +1243,7 @@ g_dbus_connection_send_dbus_1_message_with_reply (GDBusConnection    *connection
   G_UNLOCK (connection_lock);
 }
 
-/**
- * g_dbus_connection_send_dbus_1_message_with_reply_finish:
- * @connection: A #GDBusConnection.
- * @res: A #GAsyncResult obtained from the #GAsyncReadyCallback function passed
- * to g_dbus_connection_send_dbus_1_message_with_reply().
- * @error: Return location for error or %NULL.
- *
- * <para><note>
- * This function is marked as unstable API. You must include <literal>gdbus/gdbus-lowlevel.h</literal> to use it.
- * </note></para>
- *
- * Finishes sending a message with reply.
- *
- * Note that @error is only set if the #GCancellable passed to g_dbus_connection_send_dbus_1_message_with_reply()
- * was cancelled (in which case %G_DBUS_ERROR_CANCELLED is returned) or if @connection was disconnected (in
- * which case %G_DBUS_ERROR_DISCONNECTED is returned). Specifically, the returned #DBusMessage message can
- * be an error message (cf. dbus_message_is_error()). If your object mapping uses #GError you can use
- * the utility function g_dbus_error_new_for_dbus_error() to map this to a #GError.
- *
- * This function is intended for use by object mappings only.
- *
- * Returns: A #DBusMessage or %NULL if @error is set. Free with dbus_message_unref().
- **/
-DBusMessage *
+static DBusMessage *
 g_dbus_connection_send_dbus_1_message_with_reply_finish (GDBusConnection   *connection,
                                                          GAsyncResult      *res,
                                                          GError           **error)
@@ -1343,25 +1274,7 @@ send_dbus_1_message_with_reply_sync_cancelled_cb (GCancellable *cancellable,
   dbus_pending_call_cancel (pending_call);
 }
 
-/**
- * g_dbus_connection_send_dbus_1_message_with_reply_sync:
- * @connection: A #GDBusConnection.
- * @message: A #DBusMessage.
- * @timeout_msec: The timeout in milliseconds or -1 to use the default timeout.
- * @cancellable: A #GCancellable or %NULL.
- * @error: Return location for error or %NULL.
- *
- * <para><note>
- * This function is marked as unstable API. You must include <literal>gdbus/gdbus-lowlevel.h</literal> to use it.
- * </note></para>
- *
- * Synchronously sends @message on @connection and blocks the calling
- * thread until a reply is ready. TODO: some notes about threading and
- * blocking the mainloop etc.
- *
- * Returns: A #DBusMessage or %NULL if @error is set. Free with dbus_message_unref().
- **/
-DBusMessage *
+static DBusMessage *
 g_dbus_connection_send_dbus_1_message_with_reply_sync (GDBusConnection    *connection,
                                                        DBusMessage        *message,
                                                        gint                timeout_msec,
@@ -1470,7 +1383,7 @@ typedef struct
 
 typedef struct
 {
-  GDBusSignalCallback1 callback;
+  GDBusSignalCallback callback;
   gpointer user_data;
   GDestroyNotify user_data_free_func;
   guint id;
@@ -1653,7 +1566,7 @@ is_signal_data_for_name_lost_or_acquired (SignalData *signal_data)
 /* ---------------------------------------------------------------------------------------------------- */
 
 /**
- * g_dbus_connection_dbus_1_signal_subscribe:
+ * g_dbus_connection_signal_subscribe:
  * @connection: A #GDBusConnection.
  * @sender: Sender name to match on. Must be either <literal>org.freedesktop.DBus</literal> (for listening to signals from the message bus daemon) or a unique name or %NULL to listen from all senders.
  * @interface_name: D-Bus interface name to match on or %NULL to match on all interfaces.
@@ -1664,12 +1577,8 @@ is_signal_data_for_name_lost_or_acquired (SignalData *signal_data)
  * @user_data: User data to pass to @callback.
  * @user_data_free_func: Function to free @user_data when subscription is removed or %NULL.
  *
- * <para><note>
- * This function is marked as unstable API. You must include <literal>gdbus/gdbus-lowlevel.h</literal> to use it.
- * </note></para>
- *
  * Subscribes to signals on @connection and invokes @callback with a
- * #DBusMessage whenever the signal is received. Note that @callback
+ * whenever the signal is received. Note that @callback
  * will be invoked in the <link
  * linkend="g-main-context-push-thread-default">thread-default main
  * loop</link> of the thread you are calling this method from.
@@ -1681,20 +1590,20 @@ is_signal_data_for_name_lost_or_acquired (SignalData *signal_data)
  * name) - you cannot pass a name like <literal>com.example.MyApp</literal>.
  * Use e.g. g_bus_watch_name() to find the unique name for the owner of the name you are interested in. Also note
  * that this function does not remove a subscription if @sender vanishes from the bus. You have to manually
- * call g_dbus_connection_dbus_1_signal_unsubscribe() to remove a subscription.
+ * call g_dbus_connection_signal_unsubscribe() to remove a subscription.
  *
- * Returns: A subscription identifier that can be used with g_dbus_connection_dbus_1_signal_unsubscribe().
+ * Returns: A subscription identifier that can be used with g_dbus_connection_signal_unsubscribe().
  **/
 guint
-g_dbus_connection_dbus_1_signal_subscribe (GDBusConnection     *connection,
-                                           const gchar         *sender,
-                                           const gchar         *interface_name,
-                                           const gchar         *member,
-                                           const gchar         *object_path,
-                                           const gchar         *arg0,
-                                           GDBusSignalCallback1 callback,
-                                           gpointer             user_data,
-                                           GDestroyNotify       user_data_free_func)
+g_dbus_connection_signal_subscribe (GDBusConnection     *connection,
+                                    const gchar         *sender,
+                                    const gchar         *interface_name,
+                                    const gchar         *member,
+                                    const gchar         *object_path,
+                                    const gchar         *arg0,
+                                    GDBusSignalCallback  callback,
+                                    gpointer             user_data,
+                                    GDestroyNotify       user_data_free_func)
 {
   gchar *rule;
   SignalData *signal_data;
@@ -1703,14 +1612,12 @@ g_dbus_connection_dbus_1_signal_subscribe (GDBusConnection     *connection,
 
   /* Right now we abort if AddMatch() fails since it can only fail with the bus being in
    * an OOM condition. We might want to change that but that would involve making
-   * g_dbus_connection_dbus_1_signal_subscribe() asynchronous and having the call sites
+   * g_dbus_connection_signal_subscribe() asynchronous and having the call sites
    * handle that. And there's really no sensible way of handling this short of retrying
    * to add the match rule... and then there's the little thing that, hey, maybe there's
    * a reason the bus in an OOM condition.
    *
    * Doable, but not really sure it's worth it...
-   *
-   * TODO XXX MERGE_BLOCKER
    */
 
   g_return_val_if_fail (G_IS_DBUS_CONNECTION (connection), 0);
@@ -1849,19 +1756,15 @@ unsubscribe_id_internal (GDBusConnection    *connection,
 }
 
 /**
- * g_dbus_connection_dbus_1_signal_unsubscribe:
+ * g_dbus_connection_signal_unsubscribe:
  * @connection: A #GDBusConnection.
- * @subscription_id: A subscription id obtained from g_dbus_connection_dbus_1_signal_subscribe().
- *
- * <para><note>
- * This function is marked as unstable API. You must include <literal>gdbus/gdbus-lowlevel.h</literal> to use it.
- * </note></para>
+ * @subscription_id: A subscription id obtained from g_dbus_connection_signal_subscribe().
  *
  * Unsubscribes from signals.
  **/
 void
-g_dbus_connection_dbus_1_signal_unsubscribe (GDBusConnection    *connection,
-                                             guint               subscription_id)
+g_dbus_connection_signal_unsubscribe (GDBusConnection    *connection,
+                                      guint               subscription_id)
 {
   GArray *subscribers;
   guint n;
@@ -1895,7 +1798,7 @@ g_dbus_connection_dbus_1_signal_unsubscribe (GDBusConnection    *connection,
 
 typedef struct
 {
-  GDBusSignalCallback1 callback;
+  GDBusSignalCallback  callback;
   gpointer             user_data;
   DBusMessage         *message;
   GDBusConnection     *connection;
@@ -1905,9 +1808,29 @@ static gboolean
 emit_signal_instance_in_idle_cb (gpointer data)
 {
   SignalInstance *signal_instance = data;
+
+  GVariant *parameters;
+  GError *error;
+
+  error = NULL;
+  parameters = _g_dbus_dbus_1_to_gvariant (signal_instance->message, &error);
+  if (parameters == NULL)
+    {
+      g_warning ("Error converting signal parameters to a GVariant: %s", error->message);
+      g_error_free (error);
+      goto out;
+    }
+
   signal_instance->callback (signal_instance->connection,
-                             signal_instance->message,
+                             dbus_message_get_sender (signal_instance->message),
+                             dbus_message_get_path (signal_instance->message),
+                             dbus_message_get_interface (signal_instance->message),
+                             dbus_message_get_member (signal_instance->message),
+                             parameters,
                              signal_instance->user_data);
+ out:
+  g_variant_unref (parameters);
+
   return FALSE;
 }
 
@@ -2062,176 +1985,6 @@ purge_all_signal_subscriptions (GDBusConnection *connection)
     }
 
   g_array_free (subscribers, TRUE);
-}
-
-/* ---------------------------------------------------------------------------------------------------- */
-
-/* TODO: mark this function as (skip) so it won't show up in bindings
- *       cf. http://bugzilla.gnome.org/show_bug.cgi?id=556628
- */
-
-typedef struct
-{
-  GDBusSignalCallback callback;
-  gpointer user_data;
-  GDestroyNotify user_data_free_func;
-} CSignalSubscriber;
-
-static void
-c_signal_cb (GDBusConnection *connection,
-             DBusMessage     *message,
-             gpointer         user_data)
-{
-  CSignalSubscriber *subscriber = user_data;
-  GPtrArray *p;
-  DBusMessageIter iter;
-  guint n;
-
-  p = g_ptr_array_new_with_free_func (g_object_unref);
-
-  dbus_message_iter_init (message, &iter);
-
-  n = 0;
-  while (dbus_message_iter_get_arg_type (&iter) != DBUS_TYPE_INVALID)
-    {
-      GValue value = {0};
-      GError *error;
-      char *arg_signature;
-      GDBusVariant *variant;
-
-      error = NULL;
-      if (!g_dbus_c_type_mapping_get_value_from_iter (&iter,
-                                                      &value,
-                                                      &error))
-        {
-          g_warning ("Error getting argument %d from %s signal: %s",
-                     n,
-                     dbus_message_get_member (message),
-                     error->message);
-          g_error_free (error);
-          goto out;
-        }
-
-      arg_signature = dbus_message_iter_get_signature (&iter);
-      variant = _g_dbus_variant_new_for_gvalue (&value, arg_signature);
-      dbus_free (arg_signature);
-
-      g_value_unset (&value);
-
-      g_ptr_array_add (p, variant);
-
-      dbus_message_iter_next (&iter);
-      n++;
-    }
-
-  subscriber->callback (connection,
-                        dbus_message_get_member (message),
-                        dbus_message_get_signature (message),
-                        p,
-                        subscriber->user_data);
-
- out:
-  g_ptr_array_free (p, TRUE);
-}
-
-static void
-free_c_subscriber (CSignalSubscriber *subscriber)
-{
-  if (subscriber->user_data_free_func != NULL)
-    subscriber->user_data_free_func (subscriber->user_data);
-  g_free (subscriber);
-}
-
-/**
- * g_dbus_connection_signal_subscribe:
- * @connection: A #GDBusConnection.
- * @sender: Sender name to match on. Must be either <literal>org.freedesktop.DBus</literal> (for listening to signals from the message bus daemon) or a unique name or %NULL to listen from all senders.
- * @interface_name: D-Bus interface name to match on or %NULL to match on all interfaces.
- * @member: D-Bus signal name to match on or %NULL to match on all signals.
- * @object_path: Object path to match on or %NULL to match on all object paths.
- * @arg0: Contents of first string argument to match on or %NULL to match on all kinds of arguments.
- * @callback: Callback to invoke when there is a signal matching the requested data.
- * @user_data: User data to pass to @callback.
- * @user_data_free_func: Function to free @user_data when subscription is removed or %NULL.
- *
- * Subscribes to signals on @connection and invokes @callback with the
- * contents of the signal whenever it is received. Note that @callback
- * will be invoked in the <link
- * linkend="g-main-context-push-thread-default">thread-default main
- * loop</link> of the thread you are calling this method from.
- *
- * It is considered a programming error to use this function if
- * @connection has been disconnected.
- *
- * Note that if @sender is not <literal>org.freedesktop.DBus</literal> (for listening to signals from the
- * message bus daemon), then it needs to be a unique bus name or %NULL (for listening to signals from any
- * name) - you cannot pass a name like <literal>com.example.MyApp</literal>.
- * Use e.g. g_bus_watch_name() to find the unique name for the owner of the name you are interested in. Also note
- * that this function does not remove a subscription if @sender vanishes from the bus. You have to manually
- * call g_dbus_connection_signal_unsubscribe() to remove a subscription.
- *
- * Returns: A subscription identifier that can be used with g_dbus_connection_signal_unsubscribe().
- **/
-guint
-g_dbus_connection_signal_subscribe (GDBusConnection     *connection,
-                                    const gchar         *sender,
-                                    const gchar         *interface_name,
-                                    const gchar         *member,
-                                    const gchar         *object_path,
-                                    const gchar         *arg0,
-                                    GDBusSignalCallback  callback,
-                                    gpointer             user_data,
-                                    GDestroyNotify       user_data_free_func)
-{
-  CSignalSubscriber *subscriber;
-  guint subscription_id;
-
-  g_return_val_if_fail (G_IS_DBUS_CONNECTION (connection), 0);
-  g_return_val_if_fail (!g_dbus_connection_get_is_disconnected (connection), 0);
-  g_return_val_if_fail (callback != NULL, 0);
-
-  subscriber = g_new0 (CSignalSubscriber, 1);
-  subscriber->callback = callback;
-  subscriber->user_data = user_data;
-  subscriber->user_data_free_func = user_data_free_func;
-
-  subscription_id = g_dbus_connection_dbus_1_signal_subscribe (connection,
-                                                               sender,
-                                                               interface_name,
-                                                               member,
-                                                               object_path,
-                                                               arg0,
-                                                               c_signal_cb,
-                                                               subscriber,
-                                                               (GDestroyNotify) free_c_subscriber);
-
-  if (subscription_id == 0)
-    {
-      g_free (subscriber);
-      goto out;
-    }
-
- out:
-  return subscription_id;
-}
-
-/* TODO: mark this function as (skip) so it won't show up in bindings
- *       cf. http://bugzilla.gnome.org/show_bug.cgi?id=556628
- */
-
-/**
- * g_dbus_connection_signal_unsubscribe:
- * @connection: A #GDBusConnection.
- * @subscription_id: A subscription id obtained from g_dbus_connection_signal_subscribe().
- *
- * Unsubscribes from signals.
- **/
-void
-g_dbus_connection_signal_unsubscribe (GDBusConnection     *connection,
-                                      guint                subscription_id)
-{
-  /* TODO: free CSignalSubscriber */
-  g_dbus_connection_dbus_1_signal_unsubscribe (connection, subscription_id);
 }
 
 /* ---------------------------------------------------------------------------------------------------- */
@@ -2506,11 +2259,11 @@ g_dbus_connection_register_object (GDBusConnection            *connection,
           if (g_strcmp0 (dbus_error.name, DBUS_ERROR_NO_MEMORY) == 0)
             _g_dbus_oom ();
 
-          g_dbus_error_set_dbus_error (error,
-                                       &dbus_error,
-                                       NULL,
-                                       _("Another D-Bus binding is already exporting an object at %s"),
-                                       object_path);
+          _g_dbus_error_set_dbus_error (error,
+                                        &dbus_error,
+                                        NULL,
+                                        _("Another D-Bus binding is already exporting an object at %s"),
+                                        object_path);
           dbus_error_free (&dbus_error);
           goto out;
         }
@@ -2607,6 +2360,73 @@ g_dbus_connection_unregister_object (GDBusConnection *connection,
 /* ---------------------------------------------------------------------------------------------------- */
 
 /**
+ * g_dbus_connection_emit_signal:
+ * @connection: A #GDBusConnection.
+ * @destination_bus_name: The unique bus name for the destination for the signal or %NULL to emit to all listeners.
+ * @object_path: Path of remote object.
+ * @interface_name: D-Bus interface to emit a signal on.
+ * @signal_name: The name of the signal to emit.
+ * @parameters: A #GVariant tuple with parameters for the signal or %NULL if not passing parameters.
+ * @error: Return location for error or %NULL.
+ *
+ * Emits a signal.
+ *
+ * This can only fail if @parameters is not compatible with the D-Bus protocol.
+ *
+ * Returns: %TRUE unless @error is set.
+ */
+gboolean
+g_dbus_connection_emit_signal (GDBusConnection    *connection,
+                               const gchar        *destination_bus_name,
+                               const gchar        *object_path,
+                               const gchar        *interface_name,
+                               const gchar        *signal_name,
+                               GVariant           *parameters,
+                               GError            **error)
+{
+  DBusMessage *message;
+  gboolean ret;
+
+  message = NULL;
+  ret = FALSE;
+
+  g_return_val_if_fail (G_IS_DBUS_CONNECTION (connection), FALSE);
+  g_return_val_if_fail (object_path != NULL, FALSE);
+  g_return_val_if_fail (interface_name != NULL, FALSE);
+  g_return_val_if_fail (signal_name != NULL, FALSE);
+  g_return_val_if_fail ((parameters == NULL) || (g_variant_get_type_class (parameters) == G_VARIANT_TYPE_CLASS_TUPLE), FALSE);
+
+  message = dbus_message_new_signal (object_path,
+                                     interface_name,
+                                     signal_name);
+  if (message == NULL)
+    _g_dbus_oom ();
+
+  if (destination_bus_name != NULL)
+    {
+      if (!dbus_message_set_destination (message, destination_bus_name))
+        _g_dbus_oom ();
+    }
+
+  if (!_g_dbus_gvariant_to_dbus_1 (message,
+                                   parameters,
+                                   error))
+    {
+      goto out;
+    }
+
+  g_dbus_connection_send_dbus_1_message (connection, message);
+
+  ret = TRUE;
+
+ out:
+  if (message != NULL)
+    dbus_message_unref (message);
+
+  return ret;
+}
+
+/**
  * g_dbus_connection_invoke_method:
  * @connection: A #GDBusConnection.
  * @bus_name: A unique or well-known bus name.
@@ -2614,31 +2434,35 @@ g_dbus_connection_unregister_object (GDBusConnection *connection,
  * @interface_name: D-Bus interface to invoke method on.
  * @method_name: The name of the method to invoke.
  * @parameters: A #GVariant tuple with parameters for the method or %NULL if not passing parameters.
+ * @error: Return location for error or %NULL.
  *
  * Invokes a method without waiting for a reply.
  *
- * If @parameters is not compatible with the D-Bus protocol, the method is not invoked. If you
- * need error checking, use g_dbus_connection_invoke_method_with_reply() or
- * g_dbus_connection_invoke_method_with_reply_sync() instead.
+ * This can only fail if @parameters is not compatible with the D-Bus protocol.
+ *
+ * Returns: %TRUE unless @error is set.
  */
-void
+gboolean
 g_dbus_connection_invoke_method (GDBusConnection    *connection,
                                  const gchar        *bus_name,
                                  const gchar        *object_path,
                                  const gchar        *interface_name,
                                  const gchar        *method_name,
-                                 GVariant           *parameters)
+                                 GVariant           *parameters,
+                                 GError            **error)
 {
   DBusMessage *message;
+  gboolean ret;
 
   message = NULL;
+  ret = FALSE;
 
-  g_return_if_fail (G_IS_DBUS_CONNECTION (connection));
-  g_return_if_fail (bus_name != NULL);
-  g_return_if_fail (object_path != NULL);
-  g_return_if_fail (interface_name != NULL);
-  g_return_if_fail (method_name != NULL);
-  g_return_if_fail ((parameters == NULL) || (g_variant_get_type_class (parameters) == G_VARIANT_TYPE_CLASS_TUPLE));
+  g_return_val_if_fail (G_IS_DBUS_CONNECTION (connection), FALSE);
+  g_return_val_if_fail (bus_name != NULL, FALSE);
+  g_return_val_if_fail (object_path != NULL, FALSE);
+  g_return_val_if_fail (interface_name != NULL, FALSE);
+  g_return_val_if_fail (method_name != NULL, FALSE);
+  g_return_val_if_fail ((parameters == NULL) || (g_variant_get_type_class (parameters) == G_VARIANT_TYPE_CLASS_TUPLE), FALSE);
 
   message = dbus_message_new_method_call (bus_name,
                                           object_path,
@@ -2649,16 +2473,20 @@ g_dbus_connection_invoke_method (GDBusConnection    *connection,
 
   if (!_g_dbus_gvariant_to_dbus_1 (message,
                                    parameters,
-                                   NULL))
+                                   error))
     {
       goto out;
     }
 
   g_dbus_connection_send_dbus_1_message (connection, message);
 
+  ret = TRUE;
+
  out:
   if (message != NULL)
     dbus_message_unref (message);
+
+  return ret;
 }
 
 /**
@@ -2882,6 +2710,3 @@ g_dbus_connection_invoke_method_with_reply_sync (GDBusConnection    *connection,
 }
 
 /* ---------------------------------------------------------------------------------------------------- */
-
-#define __G_DBUS_CONNECTION_C__
-#include "gdbusaliasdef.c"

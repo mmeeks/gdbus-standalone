@@ -111,7 +111,6 @@ AM_CONDITIONAL(OS_UNIX, [test "x" = "x"])
 AC_OUTPUT([
 Makefile
 gdbus-standalone.pc
-gdbus-lowlevel-standalone.pc
 gdbus/Makefile
 gdbus/tests/Makefile
 docs/Makefile

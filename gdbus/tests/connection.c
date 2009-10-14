@@ -21,8 +21,6 @@
  */
 
 #include <gdbus/gdbus.h>
-#define G_DBUS_I_UNDERSTAND_THAT_ABI_AND_API_IS_UNSTABLE
-#include <gdbus/gdbus-lowlevel.h>
 #include <unistd.h>
 
 #include "tests.h"
@@ -102,15 +100,15 @@ msg_cb_expect_error_disconnected (GDBusConnection *connection,
                                   gpointer         user_data)
 {
   GError *error;
-  DBusMessage *reply;
+  GVariant *result;
 
   error = NULL;
-  reply = g_dbus_connection_send_dbus_1_message_with_reply_finish (connection,
-                                                                   res,
-                                                                   &error);
+  result = g_dbus_connection_invoke_method_with_reply_finish (connection,
+                                                              res,
+                                                              &error);
   g_assert_error (error, G_DBUS_ERROR, G_DBUS_ERROR_DISCONNECTED);
   g_error_free (error);
-  g_assert (reply == NULL);
+  g_assert (result == NULL);
 
   g_main_loop_quit (loop);
 }
@@ -121,24 +119,14 @@ msg_cb_expect_error_unknown_method (GDBusConnection *connection,
                                     gpointer         user_data)
 {
   GError *error;
-  DBusMessage *reply;
-  DBusError dbus_error;
+  GVariant *result;
 
   error = NULL;
-  reply = g_dbus_connection_send_dbus_1_message_with_reply_finish (connection,
-                                                                   res,
-                                                                   &error);
-  g_assert_no_error (error);
-  g_assert (reply != NULL);
-
-  dbus_error_init (&dbus_error);
-  g_assert (dbus_set_error_from_message (&dbus_error, reply));
-  dbus_message_unref (reply);
-
-  g_dbus_error_set_dbus_error (&error, &dbus_error, NULL, NULL);
-  dbus_error_free (&dbus_error);
+  result = g_dbus_connection_invoke_method_with_reply_finish (connection,
+                                                              res,
+                                                              &error);
   g_assert_error (error, G_DBUS_ERROR, G_DBUS_ERROR_UNKNOWN_METHOD);
-  g_error_free (error);
+  g_assert (result == NULL);
 
   g_main_loop_quit (loop);
 }
@@ -149,15 +137,15 @@ msg_cb_expect_success (GDBusConnection *connection,
                        gpointer         user_data)
 {
   GError *error;
-  DBusMessage *reply;
+  GVariant *result;
 
   error = NULL;
-  reply = g_dbus_connection_send_dbus_1_message_with_reply_finish (connection,
-                                                                   res,
-                                                                   &error);
+  result = g_dbus_connection_invoke_method_with_reply_finish (connection,
+                                                              res,
+                                                              &error);
   g_assert_no_error (error);
-  g_assert (reply != NULL);
-  dbus_message_unref (reply);
+  g_assert (result != NULL);
+  g_variant_unref (result);
 
   g_main_loop_quit (loop);
 }
@@ -168,15 +156,15 @@ msg_cb_expect_error_cancelled (GDBusConnection *connection,
                                gpointer         user_data)
 {
   GError *error;
-  DBusMessage *reply;
+  GVariant *result;
 
   error = NULL;
-  reply = g_dbus_connection_send_dbus_1_message_with_reply_finish (connection,
-                                                                   res,
-                                                                   &error);
+  result = g_dbus_connection_invoke_method_with_reply_finish (connection,
+                                                              res,
+                                                              &error);
   g_assert_error (error, G_DBUS_ERROR, G_DBUS_ERROR_CANCELLED);
   g_error_free (error);
-  g_assert (reply == NULL);
+  g_assert (result == NULL);
 
   g_main_loop_quit (loop);
 }
@@ -187,8 +175,6 @@ static void
 test_connection_send (void)
 {
   GDBusConnection *c;
-  DBusMessage *m;
-  DBusMessage *m2;
   GCancellable *ca;
 
   session_bus_up ();
@@ -198,18 +184,6 @@ test_connection_send (void)
   g_assert (c != NULL);
   g_assert (!g_dbus_connection_get_is_disconnected (c));
 
-  /* Use the GetId() method on the message bus for testing */
-  m = dbus_message_new_method_call (DBUS_SERVICE_DBUS,
-                                    DBUS_PATH_DBUS,
-                                    DBUS_INTERFACE_DBUS,
-                                    "GetId");
-
-  /* Non-existant method on the message bus for testing */
-  m2 = dbus_message_new_method_call (DBUS_SERVICE_DBUS,
-                                     DBUS_PATH_DBUS,
-                                     DBUS_INTERFACE_DBUS,
-                                     "NonExistantMethod");
-
   /**
    * Check that we never actually send a message if the GCancellable is already cancelled - i.e.
    * we should get #G_DBUS_ERROR_CANCELLED instead of #G_DBUS_ERROR_FAILED even when the actual
@@ -217,47 +191,63 @@ test_connection_send (void)
    */
   ca = g_cancellable_new ();
   g_cancellable_cancel (ca);
-  g_dbus_connection_send_dbus_1_message_with_reply (c,
-                                                    m,
-                                                    -1,
-                                                    ca,
-                                                    (GAsyncReadyCallback) msg_cb_expect_error_cancelled,
-                                                    NULL);
+  g_dbus_connection_invoke_method_with_reply (c,
+                                              "org.freedesktop.DBus",  /* bus_name */
+                                              "/org/freedesktop/DBus", /* object path */
+                                              "org.freedesktop.DBus",  /* interface name */
+                                              "GetId",                 /* method name */
+                                              NULL,
+                                              -1,
+                                              ca,
+                                              (GAsyncReadyCallback) msg_cb_expect_error_cancelled,
+                                              NULL);
   g_main_loop_run (loop);
   g_object_unref (ca);
 
   /**
    * Check that we get a reply to the GetId() method call.
    */
-  g_dbus_connection_send_dbus_1_message_with_reply (c,
-                                                    m,
-                                                    -1,
-                                                    NULL,
-                                                    (GAsyncReadyCallback) msg_cb_expect_success,
-                                                    NULL);
+  g_dbus_connection_invoke_method_with_reply (c,
+                                              "org.freedesktop.DBus",  /* bus_name */
+                                              "/org/freedesktop/DBus", /* object path */
+                                              "org.freedesktop.DBus",  /* interface name */
+                                              "GetId",                 /* method name */
+                                              NULL,
+                                              -1,
+                                              NULL,
+                                              (GAsyncReadyCallback) msg_cb_expect_success,
+                                              NULL);
   g_main_loop_run (loop);
 
   /**
    * Check that we get an error reply to the NonExistantMethod() method call.
    */
-  g_dbus_connection_send_dbus_1_message_with_reply (c,
-                                                    m2,
-                                                    -1,
-                                                    NULL,
-                                                    (GAsyncReadyCallback) msg_cb_expect_error_unknown_method,
-                                                    NULL);
+  g_dbus_connection_invoke_method_with_reply (c,
+                                              "org.freedesktop.DBus",  /* bus_name */
+                                              "/org/freedesktop/DBus", /* object path */
+                                              "org.freedesktop.DBus",  /* interface name */
+                                              "NonExistantMethod",     /* method name */
+                                              NULL,
+                                              -1,
+                                              NULL,
+                                              (GAsyncReadyCallback) msg_cb_expect_error_unknown_method,
+                                              NULL);
   g_main_loop_run (loop);
 
   /**
    * Check that cancellation works when the message is already in flight.
    */
   ca = g_cancellable_new ();
-  g_dbus_connection_send_dbus_1_message_with_reply (c,
-                                                    m,
-                                                    -1,
-                                                    ca,
-                                                    (GAsyncReadyCallback) msg_cb_expect_error_cancelled,
-                                                    NULL);
+  g_dbus_connection_invoke_method_with_reply (c,
+                                              "org.freedesktop.DBus",  /* bus_name */
+                                              "/org/freedesktop/DBus", /* object path */
+                                              "org.freedesktop.DBus",  /* interface name */
+                                              "GetId",                 /* method name */
+                                              NULL,
+                                              -1,
+                                              ca,
+                                              (GAsyncReadyCallback) msg_cb_expect_error_cancelled,
+                                              NULL);
   g_cancellable_cancel (ca);
   g_main_loop_run (loop);
   g_object_unref (ca);
@@ -270,17 +260,19 @@ test_connection_send (void)
   _g_assert_signal_received (c, "disconnected");
   g_assert (g_dbus_connection_get_is_disconnected (c));
 
-  g_dbus_connection_send_dbus_1_message_with_reply (c,
-                                                    m,
-                                                    -1,
-                                                    NULL,
-                                                    (GAsyncReadyCallback) msg_cb_expect_error_disconnected,
-                                                    NULL);
+  g_dbus_connection_invoke_method_with_reply (c,
+                                              "org.freedesktop.DBus",  /* bus_name */
+                                              "/org/freedesktop/DBus", /* object path */
+                                              "org.freedesktop.DBus",  /* interface name */
+                                              "GetId",                 /* method name */
+                                              NULL,
+                                              -1,
+                                              NULL,
+                                              (GAsyncReadyCallback) msg_cb_expect_error_disconnected,
+                                              NULL);
   g_main_loop_run (loop);
 
   g_object_unref (c);
-  dbus_message_unref (m);
-  dbus_message_unref (m2);
 }
 
 /* ---------------------------------------------------------------------------------------------------- */
@@ -289,7 +281,11 @@ test_connection_send (void)
 
 static void
 test_connection_signal_handler (GDBusConnection *connection,
-                                DBusMessage     *message,
+                                const gchar      *sender_name,
+                                const gchar      *object_path,
+                                const gchar      *interface_name,
+                                const gchar      *signal_name,
+                                GVariant         *parameters,
                                 gpointer         user_data)
 {
   gint *counter = user_data;
@@ -316,7 +312,10 @@ test_connection_signals (void)
   gint count_s1;
   gint count_s2;
   gint count_name_owner_changed;
-  DBusMessage *m;
+  GError *error;
+  gboolean ret;
+
+  error = NULL;
 
   /**
    * Bring up first separate connections
@@ -345,33 +344,33 @@ test_connection_signals (void)
    *
    * and then count how many times this signal handler was invoked.
    */
-  s1 = g_dbus_connection_dbus_1_signal_subscribe (c1,
-                                                  ":1.2",
-                                                  "org.gtk.GDBus.ExampleInterface",
-                                                  "Foo",
-                                                  "/org/gtk/GDBus/ExampleInterface",
-                                                  NULL,
-                                                  test_connection_signal_handler,
-                                                  &count_s1,
-                                                  NULL);
-  s2 = g_dbus_connection_dbus_1_signal_subscribe (c1,
-                                                  NULL, /* match any sender */
-                                                  "org.gtk.GDBus.ExampleInterface",
-                                                  "Foo",
-                                                  "/org/gtk/GDBus/ExampleInterface",
-                                                  NULL,
-                                                  test_connection_signal_handler,
-                                                  &count_s2,
-                                                  NULL);
-  s3 = g_dbus_connection_dbus_1_signal_subscribe (c1,
-                                                  "org.freedesktop.DBus",  /* sender */
-                                                  "org.freedesktop.DBus",  /* interface */
-                                                  "NameOwnerChanged",      /* member */
-                                                  "/org/freedesktop/DBus", /* path */
-                                                  NULL,
-                                                  test_connection_signal_handler,
-                                                  &count_name_owner_changed,
-                                                  NULL);
+  s1 = g_dbus_connection_signal_subscribe (c1,
+                                           ":1.2",
+                                           "org.gtk.GDBus.ExampleInterface",
+                                           "Foo",
+                                           "/org/gtk/GDBus/ExampleInterface",
+                                           NULL,
+                                           test_connection_signal_handler,
+                                           &count_s1,
+                                           NULL);
+  s2 = g_dbus_connection_signal_subscribe (c1,
+                                           NULL, /* match any sender */
+                                           "org.gtk.GDBus.ExampleInterface",
+                                           "Foo",
+                                           "/org/gtk/GDBus/ExampleInterface",
+                                           NULL,
+                                           test_connection_signal_handler,
+                                           &count_s2,
+                                           NULL);
+  s3 = g_dbus_connection_signal_subscribe (c1,
+                                           "org.freedesktop.DBus",  /* sender */
+                                           "org.freedesktop.DBus",  /* interface */
+                                           "NameOwnerChanged",      /* member */
+                                           "/org/freedesktop/DBus", /* path */
+                                           NULL,
+                                           test_connection_signal_handler,
+                                           &count_name_owner_changed,
+                                           NULL);
   g_assert (s1 != 0);
   g_assert (s2 != 0);
   g_assert (s3 != 0);
@@ -392,15 +391,18 @@ test_connection_signals (void)
   g_assert (!g_dbus_connection_get_is_disconnected (c3));
   g_assert_cmpstr (g_dbus_connection_get_unique_name (c3), ==, ":1.3");
 
-  /* prepare a signal message */
-  m = dbus_message_new_signal ("/org/gtk/GDBus/ExampleInterface",
-                               "org.gtk.GDBus.ExampleInterface",
-                               "Foo");
-
   /**
    * Make c2 emit "Foo" - we should catch it twice
    */
-  g_dbus_connection_send_dbus_1_message (c2, m);
+  ret = g_dbus_connection_emit_signal (c2,
+                                       NULL, /* destination bus name */
+                                       "/org/gtk/GDBus/ExampleInterface",
+                                       "org.gtk.GDBus.ExampleInterface",
+                                       "Foo",
+                                       NULL,
+                                       &error);
+  g_assert_no_error (error);
+  g_assert (ret);
   while (!(count_s1 == 1 && count_s2 == 1))
     g_main_loop_run (loop);
   g_assert_cmpint (count_s1, ==, 1);
@@ -409,7 +411,15 @@ test_connection_signals (void)
   /**
    * Make c3 emit "Foo" - we should catch it only once
    */
-  g_dbus_connection_send_dbus_1_message (c3, m);
+  ret = g_dbus_connection_emit_signal (c3,
+                                       NULL, /* destination bus name */
+                                       "/org/gtk/GDBus/ExampleInterface",
+                                       "org.gtk.GDBus.ExampleInterface",
+                                       "Foo",
+                                       NULL,
+                                       &error);
+  g_assert_no_error (error);
+  g_assert (ret);
   while (!(count_s1 == 1 && count_s2 == 2))
     g_main_loop_run (loop);
   g_assert_cmpint (count_s1, ==, 1);
@@ -439,10 +449,9 @@ test_connection_signals (void)
   if (!g_dbus_connection_get_is_disconnected (c3))
     _g_assert_signal_received (c3, "disconnected");
 
-  dbus_message_unref (m);
-  g_dbus_connection_dbus_1_signal_unsubscribe (c1, s1);
-  g_dbus_connection_dbus_1_signal_unsubscribe (c1, s2);
-  g_dbus_connection_dbus_1_signal_unsubscribe (c1, s3);
+  g_dbus_connection_signal_unsubscribe (c1, s1);
+  g_dbus_connection_signal_unsubscribe (c1, s2);
+  g_dbus_connection_signal_unsubscribe (c1, s3);
   g_object_unref (c1);
   g_object_unref (c2);
   g_object_unref (c3);

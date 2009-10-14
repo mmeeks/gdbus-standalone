@@ -27,7 +27,6 @@
 #include <glib/gi18n.h>
 
 #include "gdbusintrospection.h"
-#include "gdbusalias.h"
 
 /**
  * SECTION:gdbusintrospection

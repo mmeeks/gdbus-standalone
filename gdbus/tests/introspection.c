@@ -41,27 +41,30 @@ introspection_on_proxy_appeared (GDBusConnection *connection,
                                  gpointer         user_data)
 {
   GError *error;
-  gboolean ret;
-  gchar *xml_data;
+  const gchar *xml_data;
   GDBusNodeInfo *node_info;
   const GDBusInterfaceInfo *interface_info;
   const GDBusMethodInfo *method_info;
   const GDBusSignalInfo *signal_info;
+  GVariant *result;
 
   error = NULL;
 
   /**
    * Invoke Introspect(), then parse the output.
    */
-  ret = g_dbus_proxy_invoke_method_sync (proxy, "org.freedesktop.DBus.Introspectable.Introspect", "", "s",
-                                         -1, NULL, &error,
-                                         /* in values */
-                                         G_TYPE_INVALID,
-                                         /* out values */
-                                         G_TYPE_STRING, &xml_data,
-                                         G_TYPE_INVALID);
+  result = g_dbus_connection_invoke_method_with_reply_sync (g_dbus_proxy_get_connection (proxy),
+                                                            g_dbus_proxy_get_unique_bus_name (proxy),
+                                                            g_dbus_proxy_get_object_path (proxy),
+                                                            "org.freedesktop.DBus.Introspectable",
+                                                            "Introspect",
+                                                            NULL,
+                                                            -1,
+                                                            NULL,
+                                                            &error);
   g_assert_no_error (error);
-  g_assert (ret);
+  g_assert (result != NULL);
+  g_variant_get (result, "(s)", &xml_data);
 
   node_info = g_dbus_node_info_new_for_xml (xml_data, &error);
   g_assert_no_error (error);
@@ -93,8 +96,8 @@ introspection_on_proxy_appeared (GDBusConnection *connection,
   g_assert (signal_info != NULL);
   g_assert_cmpstr (signal_info->signature, ==, "sov");
 
-  g_free (xml_data);
   g_dbus_node_info_free (node_info);
+  g_variant_unref (result);
 
   g_main_loop_quit (loop);
 }

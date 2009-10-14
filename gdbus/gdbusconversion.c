@@ -30,6 +30,9 @@
 #include <glib/gi18n.h>
 
 #include "gdbusconversion.h"
+#include "gdbuserror.h"
+#include "gdbusenums.h"
+#include "gdbusprivate.h"
 
 static gboolean
 dconf_dbus_from_gv (DBusMessageIter  *iter,
@@ -131,7 +134,7 @@ dconf_dbus_from_gv (DBusMessageIter  *iter,
         dbus_message_iter_open_container (iter, DBUS_TYPE_VARIANT,
                                           g_variant_get_type_string (child),
                                           &sub);
-        if (!dconf_dbus_from_gv (iter, child, error))
+        if (!dconf_dbus_from_gv (&sub, child, error))
           {
             g_variant_unref (child);
             goto fail;
@@ -323,22 +326,50 @@ dconf_dbus_to_gv (DBusMessageIter  *iter,
        return g_variant_new_signature (value);
       }
 
-     case DBUS_TYPE_ARRAY:
      case DBUS_TYPE_VARIANT:
+       {
+        GVariantBuilder *builder;
+        GVariantTypeClass class;
+        DBusMessageIter sub;
+        char *type;
+        GVariant *val;
+
+        dbus_message_iter_recurse (iter, &sub);
+        class = dbus_message_iter_get_arg_type (iter);
+        type = dbus_message_iter_get_signature (&sub);
+        builder = g_variant_builder_new (class, G_VARIANT_TYPE (type));
+        dbus_free (type);
+
+        while (dbus_message_iter_get_arg_type (&sub))
+          {
+            val = dconf_dbus_to_gv (&sub, error);
+            if (val == NULL)
+              {
+                g_variant_builder_cancel (builder);
+                goto fail;
+              }
+            g_variant_builder_add_value (builder, val);
+            dbus_message_iter_next (&sub);
+          }
+
+        return g_variant_builder_end (builder);
+       }
+
+     case DBUS_TYPE_ARRAY:
      case DBUS_TYPE_STRUCT:
      case DBUS_TYPE_DICT_ENTRY:
       {
         GVariantBuilder *builder;
         GVariantTypeClass class;
         DBusMessageIter sub;
-        gchar *type;
+        char *type;
         GVariant *val;
 
         dbus_message_iter_recurse (iter, &sub);
         class = dbus_message_iter_get_arg_type (iter);
         type = dbus_message_iter_get_signature (iter);
         builder = g_variant_builder_new (class, G_VARIANT_TYPE (type));
-        g_free (type);
+        dbus_free (type);
 
         while (dbus_message_iter_get_arg_type (&sub))
           {
@@ -371,6 +402,19 @@ dconf_dbus_to_gv (DBusMessageIter  *iter,
   return NULL;
 }
 
+/**
+ * _g_dbus_dbus_1_to_gvariant:
+ * @message: A #DBusMessage
+ * @error: Return location for error or %NULL.
+ *
+ * If @message is an error message (cf. DBUS_MESSAGE_TYPE_ERROR), sets
+ * @error with the contents of the error using
+ * g_dbus_error_set_dbus_error().
+ *
+ * Otherwise build a #GVariant with the message (this never fails).
+ *
+ * Returns: A #GVariant or %NULL if @error is set.
+ **/
 GVariant *
 _g_dbus_dbus_1_to_gvariant (DBusMessage  *message,
                             GError      **error)
@@ -379,8 +423,22 @@ _g_dbus_dbus_1_to_gvariant (DBusMessage  *message,
   GVariantBuilder *builder;
   guint n;
   GVariant *result;
+  DBusError dbus_error;
+
+  g_assert (message != NULL);
 
   result = NULL;
+
+  dbus_error_init (&dbus_error);
+  if (dbus_set_error_from_message (&dbus_error, message))
+    {
+      _g_dbus_error_set_dbus_error (error,
+                                    &dbus_error,
+                                    NULL,
+                                    NULL);
+      dbus_error_free (&dbus_error);
+      goto out;
+    }
 
   dbus_message_iter_init (message, &iter);
 

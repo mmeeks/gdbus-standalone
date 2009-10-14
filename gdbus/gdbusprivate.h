@@ -28,67 +28,48 @@
 #define __G_DBUS_PRIVATE_H__
 
 #include <gdbus/gdbustypes.h>
-#include <stdarg.h>
+#include <dbus/dbus.h>
 
 G_BEGIN_DECLS
 
 void _g_dbus_oom (void);
 
-/**
- * _GDBusSignatureVarargForeachCallback:
- * @arg_num: The argument number currently being processed.
- * @signature: Signature for single complete D-Bus type.
- * @type: The #GType corresponding to @signature.
- * @va_args: A #va_list you can use va_arg() on to extract the value.
- * @user_data: User data passed to _gdbus_signature_vararg_foreach().
- *
- * Callback function used in _gdbus_signature_vararg_foreach().
- *
- * Returns: %TRUE to short-circuit iteration, %FALSE to continue iterating.
- */
-typedef gboolean (*_GDBusSignatureVarargForeachCallback) (guint        arg_num,
-                                                          const gchar *signature,
-                                                          GType        type,
-                                                          va_list      va_args,
-                                                          gpointer     user_data);
+void _g_dbus_integrate_dbus_1_connection   (DBusConnection *connection,
+                                            GMainContext   *context);
+void _g_dbus_unintegrate_dbus_1_connection (DBusConnection *connection);
 
-gboolean _gdbus_signature_vararg_foreach (const gchar                         *signature,
-                                          GType                                first_type,
-                                          va_list                              va_args,
-                                          _GDBusSignatureVarargForeachCallback callback,
-                                          gpointer                             user_data);
+void _g_dbus_integrate_dbus_1_server       (DBusServer   *server,
+                                            GMainContext *context);
+void _g_dbus_unintegrate_dbus_1_server     (DBusServer   *server);
 
-GDBusStructure *_g_dbus_structure_new_for_values (const gchar *signature,
-                                                  guint        num_elements,
-                                                  GValue      *elements);
+/* Map DBusError to GError (only intended for object mappings) */
 
-const GValue   *_g_dbus_structure_get_gvalue_for_element     (GDBusStructure  *structure,
-                                                              guint            element);
+GError *_g_dbus_error_new_for_dbus_error_valist (DBusError   *dbus_error,
+                                                 GType       *error_types,
+                                                 const gchar *prepend_format,
+                                                 va_list      va_args);
 
-const GValue *_g_dbus_variant_get_gvalue (GDBusVariant *variant);
+GError *_g_dbus_error_new_for_dbus_error (DBusError   *dbus_error,
+                                          GType       *error_types,
+                                          const gchar *prepend_format,
+                                          ...);
 
-GDBusVariant *_g_dbus_variant_new_for_gvalue (const GValue *value, const gchar *signature);
+void _g_dbus_error_set_dbus_error (GError      **error,
+                                   DBusError    *dbus_error,
+                                   GType        *error_types,
+                                   const gchar  *prepend_format,
+                                   ...);
 
-gboolean _g_strv_equal (gchar **strv1,
-                        gchar **strv2);
+void _g_dbus_error_set_dbus_error_valist (GError      **error,
+                                          DBusError    *dbus_error,
+                                          GType        *error_types,
+                                          const gchar  *prepend_format,
+                                          va_list       va_args);
 
-gboolean _g_array_equal (GArray *array1,
-                         GArray *array2);
+/* Map GError to DBusError (only intended for object mappings) */
 
-gboolean _g_ptr_array_equal (GPtrArray *array1,
-                             GPtrArray *array2,
-                             const gchar *element_signature);
-
-gboolean _g_hash_table_equal (GHashTable *hash1,
-                              GHashTable *hash2,
-                              const gchar *key_signature,
-                              const gchar *value_signature);
-
-gboolean _g_dbus_gvalue_equal (const GValue *value1,
-                               const GValue *value2,
-                               const gchar  *signature);
-
-GType _g_dbus_signature_get_gtype (const gchar *signature);
+void _g_dbus_error_new_for_gerror (GError    *error,
+                                   DBusError *dbus_error);
 
 G_END_DECLS
 
