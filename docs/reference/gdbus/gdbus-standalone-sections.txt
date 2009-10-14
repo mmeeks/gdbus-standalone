@@ -37,6 +37,29 @@ G_DBUS_CONNECTION_GET_CLASS
 </SECTION>
 
 <SECTION>
+<FILE>gdbusmethodinvocation</FILE>
+<TITLE>GDBusMethodInvocation</TITLE>
+GDBusMethodInvocation
+GDBusMethodInvocationClass
+g_dbus_method_invocation_new
+g_dbus_method_invocation_get_sender
+g_dbus_method_invocation_get_object_path
+g_dbus_method_invocation_get_interface_name
+g_dbus_method_invocation_get_method_name
+g_dbus_method_invocation_get_connection
+g_dbus_method_invocation_get_object
+g_dbus_method_invocation_get_parameters
+<SUBSECTION Standard>
+G_DBUS_METHOD_INVOCATION
+G_IS_DBUS_METHOD_INVOCATION
+G_TYPE_DBUS_METHOD_INVOCATION
+g_dbus_method_invocation_get_type
+G_DBUS_METHOD_INVOCATION_CLASS
+G_IS_DBUS_METHOD_INVOCATION_CLASS
+G_DBUS_METHOD_INVOCATION_GET_CLASS
+</SECTION>
+
+<SECTION>
 <FILE>gdbusnameowning</FILE>
 GBusNameAcquiredCallback
 GBusNameLostCallback

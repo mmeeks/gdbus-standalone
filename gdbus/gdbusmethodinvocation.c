@@ -1,0 +1,464 @@
+/* GDBus - GLib D-Bus Library
+ *
+ * Copyright (C) 2008-2009 Red Hat, Inc.
+ *
+ * This library is free software; you can redistribute it and/or
+ * modify it under the terms of the GNU Lesser General Public
+ * License as published by the Free Software Foundation; either
+ * version 2 of the License, or (at your option) any later version.
+ *
+ * This library is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+ * Lesser General Public License for more details.
+ *
+ * You should have received a copy of the GNU Lesser General
+ * Public License along with this library; if not, write to the
+ * Free Software Foundation, Inc., 59 Temple Place, Suite 330,
+ * Boston, MA 02111-1307, USA.
+ *
+ * Author: David Zeuthen <davidz@redhat.com>
+ */
+
+#include "config.h"
+
+#include <stdlib.h>
+#include <glib/gi18n.h>
+
+#include "gdbusconnection.h"
+#include "gdbusmethodinvocation.h"
+
+/**
+ * SECTION:gdbusmethodinvocation
+ * @short_description: Object for handling remote calls
+ * @include: gdbus/gdbus.h
+ *
+ * Instances of the #GDBusMethodInvocation class are used when
+ * handling D-Bus method calls. It provides a way to asynchronously
+ * return results and errors.
+ */
+
+struct _GDBusMethodInvocationPrivate
+{
+  /* construct-only properties */
+  gchar           *sender;
+  gchar           *object_path;
+  gchar           *interface_name;
+  gchar           *method_name;
+  GDBusConnection *connection;
+  GObject         *object;
+  GVariant        *parameters;
+};
+
+enum
+{
+  PROP_0,
+  PROP_SENDER,
+  PROP_OBJECT_PATH,
+  PROP_INTERFACE_NAME,
+  PROP_METHOD_NAME,
+  PROP_CONNECTION,
+  PROP_OBJECT,
+  PROP_PARAMETERS
+};
+
+G_DEFINE_TYPE (GDBusMethodInvocation, g_dbus_method_invocation, G_TYPE_OBJECT);
+
+static void
+g_dbus_method_invocation_finalize (GObject *object)
+{
+  GDBusMethodInvocation *invocation = G_DBUS_METHOD_INVOCATION (object);
+
+  g_free (invocation->priv->sender);
+  g_free (invocation->priv->object_path);
+  g_free (invocation->priv->interface_name);
+  g_free (invocation->priv->method_name);
+  g_object_unref (invocation->priv->connection);
+  if (invocation->priv->object != NULL)
+    g_object_unref (invocation->priv->object);
+  g_variant_unref (invocation->priv->parameters);
+
+  if (G_OBJECT_CLASS (g_dbus_method_invocation_parent_class)->finalize != NULL)
+    G_OBJECT_CLASS (g_dbus_method_invocation_parent_class)->finalize (object);
+}
+
+static void
+g_dbus_method_invocation_get_property (GObject    *object,
+                                       guint       prop_id,
+                                       GValue     *value,
+                                       GParamSpec *pspec)
+{
+  GDBusMethodInvocation *invocation = G_DBUS_METHOD_INVOCATION (object);
+
+  switch (prop_id)
+    {
+    case PROP_SENDER:
+      g_value_set_string (value, g_dbus_method_invocation_get_sender (invocation));
+      break;
+
+    case PROP_OBJECT_PATH:
+      g_value_set_string (value, g_dbus_method_invocation_get_object_path (invocation));
+      break;
+
+    case PROP_INTERFACE_NAME:
+      g_value_set_string (value, g_dbus_method_invocation_get_interface_name (invocation));
+      break;
+
+    case PROP_METHOD_NAME:
+      g_value_set_string (value, g_dbus_method_invocation_get_method_name (invocation));
+      break;
+
+    case PROP_CONNECTION:
+      g_value_set_object (value, g_dbus_method_invocation_get_connection (invocation));
+      break;
+
+    case PROP_OBJECT:
+      g_value_set_object (value, g_dbus_method_invocation_get_object (invocation));
+      break;
+
+    case PROP_PARAMETERS:
+      g_value_set_boxed (value, g_dbus_method_invocation_get_parameters (invocation));
+      break;
+
+    default:
+      G_OBJECT_WARN_INVALID_PROPERTY_ID (object, prop_id, pspec);
+      break;
+    }
+}
+
+static void
+g_dbus_method_invocation_set_property (GObject      *object,
+                                       guint         prop_id,
+                                       const GValue *value,
+                                       GParamSpec   *pspec)
+{
+  GDBusMethodInvocation *invocation = G_DBUS_METHOD_INVOCATION (object);
+
+  switch (prop_id)
+    {
+    case PROP_SENDER:
+      invocation->priv->sender = g_value_dup_string (value);
+      break;
+
+    case PROP_OBJECT_PATH:
+      invocation->priv->object_path = g_value_dup_string (value);
+      break;
+
+    case PROP_INTERFACE_NAME:
+      invocation->priv->interface_name = g_value_dup_string (value);
+      break;
+
+    case PROP_METHOD_NAME:
+      invocation->priv->method_name = g_value_dup_string (value);
+      break;
+
+    case PROP_CONNECTION:
+      invocation->priv->connection = g_value_dup_object (value);
+      break;
+
+    case PROP_OBJECT:
+      invocation->priv->object = g_value_dup_object (value);
+      break;
+
+    case PROP_PARAMETERS:
+      invocation->priv->parameters = g_value_dup_boxed (value);
+      break;
+
+    default:
+      G_OBJECT_WARN_INVALID_PROPERTY_ID (object, prop_id, pspec);
+      break;
+    }
+}
+
+
+static void
+g_dbus_method_invocation_class_init (GDBusMethodInvocationClass *klass)
+{
+  GObjectClass *gobject_class = G_OBJECT_CLASS (klass);
+
+  gobject_class->finalize     = g_dbus_method_invocation_finalize;
+  gobject_class->set_property = g_dbus_method_invocation_set_property;
+  gobject_class->get_property = g_dbus_method_invocation_get_property;
+
+  /**
+   * GDBusMethodInvocation:sender:
+   *
+   * The bus name that invoked the method.
+   */
+  g_object_class_install_property (gobject_class,
+                                   PROP_SENDER,
+                                   g_param_spec_string ("sender",
+                                                        _("Sender"),
+                                                        _("The bus name that invoked the method."),
+                                                        NULL,
+                                                        G_PARAM_READABLE |
+                                                        G_PARAM_WRITABLE |
+                                                        G_PARAM_CONSTRUCT_ONLY |
+                                                        G_PARAM_STATIC_NAME |
+                                                        G_PARAM_STATIC_BLURB |
+                                                        G_PARAM_STATIC_NICK));
+
+  /**
+   * GDBusMethodInvocation:object-path:
+   *
+   * The object path the method was invoked on.
+   */
+  g_object_class_install_property (gobject_class,
+                                   PROP_OBJECT_PATH,
+                                   g_param_spec_string ("object-path",
+                                                        _("Object Path"),
+                                                        _("The object path the method was invoked on."),
+                                                        NULL,
+                                                        G_PARAM_READABLE |
+                                                        G_PARAM_WRITABLE |
+                                                        G_PARAM_CONSTRUCT_ONLY |
+                                                        G_PARAM_STATIC_NAME |
+                                                        G_PARAM_STATIC_BLURB |
+                                                        G_PARAM_STATIC_NICK));
+
+  /**
+   * GDBusMethodInvocation:interface-name:
+   *
+   * The name of the D-Bus interface the method was invoked on.
+   */
+  g_object_class_install_property (gobject_class,
+                                   PROP_INTERFACE_NAME,
+                                   g_param_spec_string ("interface-name",
+                                                        _("Interface Name"),
+                                                        _("The name of the D-Bus interface the method was invoked on."),
+                                                        NULL,
+                                                        G_PARAM_READABLE |
+                                                        G_PARAM_WRITABLE |
+                                                        G_PARAM_CONSTRUCT_ONLY |
+                                                        G_PARAM_STATIC_NAME |
+                                                        G_PARAM_STATIC_BLURB |
+                                                        G_PARAM_STATIC_NICK));
+
+  /**
+   * GDBusMethodInvocation:method-name:
+   *
+   * The name of the method that was invoked.
+   */
+  g_object_class_install_property (gobject_class,
+                                   PROP_METHOD_NAME,
+                                   g_param_spec_string ("method-name",
+                                                        _("Method Name"),
+                                                        _("The name of the method that was invoked."),
+                                                        NULL,
+                                                        G_PARAM_READABLE |
+                                                        G_PARAM_WRITABLE |
+                                                        G_PARAM_CONSTRUCT_ONLY |
+                                                        G_PARAM_STATIC_NAME |
+                                                        G_PARAM_STATIC_BLURB |
+                                                        G_PARAM_STATIC_NICK));
+
+  /**
+   * GDBusMethodInvocation:connection:
+   *
+   * The #GDBusConnection the method was invoked on.
+   */
+  g_object_class_install_property (gobject_class,
+                                   PROP_CONNECTION,
+                                   g_param_spec_object ("connection",
+                                                        _("Connection"),
+                                                        _("The #GDBusConnection the method was invoked on."),
+                                                        G_TYPE_DBUS_CONNECTION,
+                                                        G_PARAM_READABLE |
+                                                        G_PARAM_WRITABLE |
+                                                        G_PARAM_CONSTRUCT_ONLY |
+                                                        G_PARAM_STATIC_NAME |
+                                                        G_PARAM_STATIC_BLURB |
+                                                        G_PARAM_STATIC_NICK));
+
+  /**
+   * GDBusMethodInvocation:object:
+   *
+   * The #GObject passed to g_dbus_connection_register_object().
+   */
+  g_object_class_install_property (gobject_class,
+                                   PROP_OBJECT,
+                                   g_param_spec_object ("object",
+                                                        _("Object"),
+                                                        _("The #GObject passed to g_dbus_connection_register_object()."),
+                                                        G_TYPE_OBJECT,
+                                                        G_PARAM_READABLE |
+                                                        G_PARAM_WRITABLE |
+                                                        G_PARAM_CONSTRUCT_ONLY |
+                                                        G_PARAM_STATIC_NAME |
+                                                        G_PARAM_STATIC_BLURB |
+                                                        G_PARAM_STATIC_NICK));
+
+  /**
+   * GDBusMethodInvocation:parameters:
+   *
+   * The parameters as a #GVariant tuple.
+   */
+  g_object_class_install_property (gobject_class,
+                                   PROP_PARAMETERS,
+                                   g_param_spec_boxed ("parameters",
+                                                       _("Parameters"),
+                                                       _("The parameters as a #GVariant tuple."),
+                                                       G_TYPE_VARIANT,
+                                                       G_PARAM_READABLE |
+                                                       G_PARAM_WRITABLE |
+                                                       G_PARAM_CONSTRUCT_ONLY |
+                                                       G_PARAM_STATIC_NAME |
+                                                       G_PARAM_STATIC_BLURB |
+                                                       G_PARAM_STATIC_NICK));
+
+  g_type_class_add_private (klass, sizeof (GDBusMethodInvocationPrivate));
+}
+
+static void
+g_dbus_method_invocation_init (GDBusMethodInvocation *invocation)
+{
+  invocation->priv = G_TYPE_INSTANCE_GET_PRIVATE (invocation,
+                                                  G_TYPE_DBUS_METHOD_INVOCATION,
+                                                  GDBusMethodInvocationPrivate);
+}
+
+/**
+ * g_dbus_method_invocation_get_sender:
+ * @invocation: A #GDBusMethodInvocation.
+ *
+ * Gets the bus name that invoked the method.
+ *
+ * Returns: A string. Do not free, it is owned by @invocation.
+ */
+const gchar *
+g_dbus_method_invocation_get_sender (GDBusMethodInvocation *invocation)
+{
+  g_return_val_if_fail (G_IS_DBUS_METHOD_INVOCATION (invocation), NULL);
+  return invocation->priv->sender;
+}
+
+/**
+ * g_dbus_method_invocation_get_object_path:
+ * @invocation: A #GDBusMethodInvocation.
+ *
+ * Gets the object path the method was invoked on.
+ *
+ * Returns: A string. Do not free, it is owned by @invocation.
+ */
+const gchar *
+g_dbus_method_invocation_get_object_path (GDBusMethodInvocation *invocation)
+{
+  g_return_val_if_fail (G_IS_DBUS_METHOD_INVOCATION (invocation), NULL);
+  return invocation->priv->object_path;
+}
+
+/**
+ * g_dbus_method_invocation_get_interface_name:
+ * @invocation: A #GDBusMethodInvocation.
+ *
+ * Gets the name of the D-Bus interface the method was invoked on.
+ *
+ * Returns: A string. Do not free, it is owned by @invocation.
+ */
+const gchar *
+g_dbus_method_invocation_get_interface_name (GDBusMethodInvocation *invocation)
+{
+  g_return_val_if_fail (G_IS_DBUS_METHOD_INVOCATION (invocation), NULL);
+  return invocation->priv->interface_name;
+}
+
+/**
+ * g_dbus_method_invocation_get_method_name:
+ * @invocation: A #GDBusMethodInvocation.
+ *
+ * Gets the name of the method that was invoked.
+ *
+ * Returns: A string. Do not free, it is owned by @invocation.
+ */
+const gchar *
+g_dbus_method_invocation_get_method_name (GDBusMethodInvocation *invocation)
+{
+  g_return_val_if_fail (G_IS_DBUS_METHOD_INVOCATION (invocation), NULL);
+  return invocation->priv->method_name;
+}
+
+/**
+ * g_dbus_method_invocation_get_connection:
+ * @invocation: A #GDBusMethodInvocation.
+ *
+ * Gets the #GDBusConnection the method was invoked on.
+ *
+ * Returns: A #GDBusConnection. Do not free, it is owned by @invocation.
+ */
+GDBusConnection *
+g_dbus_method_invocation_get_connection (GDBusMethodInvocation *invocation)
+{
+  g_return_val_if_fail (G_IS_DBUS_METHOD_INVOCATION (invocation), NULL);
+  return invocation->priv->connection;
+}
+
+/**
+ * g_dbus_method_invocation_get_object:
+ * @invocation: A #GDBusMethodInvocation.
+ *
+ * Gets the #GObject passed to g_dbus_connection_register_object() (may be %NULL).
+ *
+ * Returns: A #GObject or %NULL. Do not free, it is owned by @invocation.
+ */
+GObject *
+g_dbus_method_invocation_get_object (GDBusMethodInvocation *invocation)
+{
+  g_return_val_if_fail (G_IS_DBUS_METHOD_INVOCATION (invocation), NULL);
+  return invocation->priv->object;
+}
+
+/**
+ * g_dbus_method_invocation_get_parameters:
+ * @invocation: A #GDBusMethodInvocation.
+ *
+ * Gets the parameters of the method invocation.
+ *
+ * Returns: A #GVariant. Do not free, it is owned by @invocation.
+ */
+GVariant *
+g_dbus_method_invocation_get_parameters (GDBusMethodInvocation *invocation)
+{
+  g_return_val_if_fail (G_IS_DBUS_METHOD_INVOCATION (invocation), NULL);
+  return invocation->priv->parameters;
+}
+
+/**
+ * g_dbus_method_invocation_new:
+ * @sender: The bus name that invoked the method.
+ * @object_path: The object path the method was invoked on.
+ * @interface_name: The name of the D-Bus interface the method was invoked on.
+ * @method_name: The name of the method that was invoked.
+ * @connection: The #GDBusConnection the method was invoked on.
+ * @object: The #GObject passed to g_dbus_connection_register_object() or %NULL.
+ * @parameters: The parameters as a #GVariant tuple.
+ *
+ * Creates a new #GDBusMethodInvocation object.
+ *
+ * Returns: A #GDBusMethodInvocation. Free with g_object_unref().
+ */
+GDBusMethodInvocation *
+g_dbus_method_invocation_new (const gchar      *sender,
+                              const gchar      *object_path,
+                              const gchar      *interface_name,
+                              const gchar      *method_name,
+                              GDBusConnection  *connection,
+                              GObject          *object,
+                              GVariant         *parameters)
+{
+  g_return_val_if_fail (sender != NULL, NULL);
+  g_return_val_if_fail (object_path != NULL, NULL);
+  g_return_val_if_fail (interface_name != NULL, NULL);
+  g_return_val_if_fail (method_name != NULL, NULL);
+  g_return_val_if_fail (G_IS_DBUS_CONNECTION (connection), NULL);
+  g_return_val_if_fail (parameters != NULL, NULL);
+
+  return G_DBUS_METHOD_INVOCATION (g_object_new (G_TYPE_DBUS_METHOD_INVOCATION,
+                                                 "sender", sender,
+                                                 "object-path", object_path,
+                                                 "interface-name", interface_name,
+                                                 "method-name", method_name,
+                                                 "connection", connection,
+                                                 "object", object,
+                                                 "parameters", parameters,
+                                                 NULL));
+}

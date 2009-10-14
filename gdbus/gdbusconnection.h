@@ -112,13 +112,20 @@ void             g_dbus_connection_set_exit_on_disconnect     (GDBusConnection  
 
 /**
  * GDBusInterfaceVTable:
+ * @handle_method_call: Function for handling incoming method calls.
  *
  * Virtual table for handling incoming method calls for a D-Bus
  * interface.
  */
 struct _GDBusInterfaceVTable
 {
-  /* TODO: vfuncs for handling messages / properties */
+  void (*handle_method_call) (GDBusConnection       *connection,
+                              GObject               *object,
+                              const gchar           *sender,
+                              const gchar           *object_path,
+                              const gchar           *method_name,
+                              GVariant              *parameters,
+                              GDBusMethodInvocation *method_invocation);
 
   /*< private >*/
   /* Padding for future expansion */

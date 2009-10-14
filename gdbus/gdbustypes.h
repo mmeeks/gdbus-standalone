@@ -33,6 +33,7 @@ G_BEGIN_DECLS
 
 typedef struct _GDBusConnection       GDBusConnection;
 typedef struct _GDBusProxy            GDBusProxy;
+typedef struct _GDBusMethodInvocation GDBusMethodInvocation;
 
 typedef struct _GDBusInterfaceVTable  GDBusInterfaceVTable;
 

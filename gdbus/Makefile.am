@@ -42,6 +42,7 @@ gdbus_headers =				\
 	gdbusproxywatching.h		\
 	gdbusproxy.h			\
 	gdbusintrospection.h		\
+	gdbusmethodinvocation.h		\
 	$(NULL)
 
 libgdbus_standalone_la_SOURCES =					\
@@ -59,6 +60,7 @@ libgdbus_standalone_la_SOURCES =					\
 	gdbusprivate.h			gdbusprivate.c			\
 	gdbusintrospection.h		gdbusintrospection.c		\
 	gdbusconversion.h		gdbusconversion.c		\
+	gdbusmethodinvocation.h		gdbusmethodinvocation.c		\
 	$(NULL)
 
 $(libgdbus_standalone_la_OBJECTS): $(marshal_sources)
@@ -130,6 +132,7 @@ noinst_PROGRAMS =
 noinst_PROGRAMS += example-own-name
 noinst_PROGRAMS += example-watch-name
 noinst_PROGRAMS += example-watch-proxy
+noinst_PROGRAMS += example-server
 
 example_watch_name_SOURCES = example-watch-name.c
 example_watch_name_CFLAGS  = $(GLIB2_CFLAGS) $(GOBJECT2_CFLAGS) $(GIO2_CFLAGS)
@@ -142,6 +145,10 @@ example_watch_proxy_LDADD   = libgdbus-standalone.la  $(GLIB2_LIBS) $(GOBJECT2_L
 example_own_name_SOURCES = example-own-name.c
 example_own_name_CFLAGS  = $(GLIB2_CFLAGS) $(GOBJECT2_CFLAGS) $(GIO2_CFLAGS)
 example_own_name_LDADD   = libgdbus-standalone.la $(GLIB2_LIBS) $(GOBJECT2_LIBS) $(GIO2_LIBS)
+
+example_server_SOURCES = example-server.c
+example_server_CFLAGS  = $(GLIB2_CFLAGS) $(GOBJECT2_CFLAGS) $(GIO2_CFLAGS)
+example_server_LDADD   = libgdbus-standalone.la $(GLIB2_LIBS) $(GOBJECT2_LIBS) $(GIO2_LIBS)
 
 clean-local :
 	rm -f *~

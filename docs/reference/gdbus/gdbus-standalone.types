@@ -3,3 +3,5 @@ g_bus_type_get_type
 g_bus_name_owner_flags_get_type
 g_dbus_error_get_type
 g_dbus_proxy_get_type
+g_dbus_method_invocation_get_type
+

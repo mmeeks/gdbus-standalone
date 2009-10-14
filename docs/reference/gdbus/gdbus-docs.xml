@@ -18,6 +18,7 @@
         <title>Low-level GDBus</title>
         <xi:include href="xml/gdbuserror.xml"/>
         <xi:include href="xml/gdbusconnection.xml"/>
+        <xi:include href="xml/gdbusmethodinvocation.xml"/>
         <xi:include href="xml/gdbusproxy.xml"/>
     </chapter>
     <chapter id="convenience">
