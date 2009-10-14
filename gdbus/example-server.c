@@ -4,73 +4,24 @@
 
 /* ---------------------------------------------------------------------------------------------------- */
 
-/* Introspection data */
+static GDBusNodeInfo *introspection_data = NULL;
 
-static const GDBusArgInfo method_hello_world_in_args[] =
-{
-  { "greeting", "s", NULL }
-};
-
-static const GDBusArgInfo method_hello_world_out_args[] =
-{
-  { "response", "s", NULL }
-};
-
-static const GDBusMethodInfo test_method_info[] =
-{
-  {
-    "HelloWorld",
-    "s", 1, method_hello_world_in_args,
-    "s", 1, method_hello_world_out_args,
-    NULL
-  }
-};
-
-/* --- */
-
-static const GDBusArgInfo signal_velocity_changed_args[] =
-{
-  { "speed_in_mph", "d", NULL },
-  { "speed_as_string", "s", NULL }
-};
-
-static const GDBusSignalInfo test_signal_info[] =
-{
-  {
-    "VelocityChanged", "velocity-changed",
-    "ds", 2, signal_velocity_changed_args,
-    NULL
-  }
-};
-
-/* --- */
-
-static const GDBusPropertyInfo test_property_info[] =
-{
-  {
-    "FluxCapicitorName", "flux-capicitor-name",
-    "s",
-    G_DBUS_PROPERTY_INFO_FLAGS_READABLE,
-    NULL
-  },
-  {
-    "Title", "title",
-    "s",
-    G_DBUS_PROPERTY_INFO_FLAGS_READABLE | G_DBUS_PROPERTY_INFO_FLAGS_WRITABLE,
-    NULL
-  }
-};
-
-/* --- */
-
-static const GDBusInterfaceInfo test_interface_info =
-{
-  "org.gtk.GDBus.TestInterface",
-  1, test_method_info,
-  1, test_signal_info,
-  2, test_property_info,
-  NULL,
-};
+/* Introspection data for the service we are exporting */
+static const gchar introspection_xml[] =
+  "<node>"
+  "  <interface name='org.gtk.GDBus.TestInterface'>"
+  "    <method name='HelloWorld'>"
+  "      <arg type='s' name='greeting' direction='in'/>"
+  "      <arg type='s' name='response' direction='out'/>"
+  "    </method>"
+  "    <signal name='VelocityChanged'>"
+  "      <arg type='d' name='speed_in_mph'/>"
+  "      <arg type='s' name='speed_as_string'/>"
+  "    </signal>"
+  "    <property type='s' name='FluxCapicitorName' access='read'/>"
+  "    <property type='s' name='Title' access='readwrite'/>"
+  "  </interface>"
+  "</node>";
 
 /* ---------------------------------------------------------------------------------------------------- */
 
@@ -139,7 +90,7 @@ on_name_acquired (GDBusConnection *connection,
                                                        NULL,
                                                        "/org/gtk/GDBus/TestObject",
                                                        "org.gtk.GDBus.TestInterface",
-                                                       &test_interface_info,
+                                                       &introspection_data->interfaces[0],
                                                        &test_interface_vtable,
                                                        NULL,
                                                        NULL,
@@ -163,6 +114,13 @@ main (int argc, char *argv[])
 
   g_type_init ();
 
+  /* We are lazy here - we don't want to manually provide
+   * the introspection data structures - so we just build
+   * them from XML.
+   */
+  introspection_data = g_dbus_node_info_new_for_xml (introspection_xml, NULL);
+  g_assert (introspection_data != NULL);
+
   owner_id = g_bus_own_name (G_BUS_TYPE_SESSION,
                              "org.gtk.GDBus.TestServer",
                              G_BUS_NAME_OWNER_FLAGS_NONE,
@@ -174,6 +132,8 @@ main (int argc, char *argv[])
   g_main_loop_run (loop);
 
   g_bus_unown_name (owner_id);
+
+  g_dbus_node_info_free (introspection_data);
 
   return 0;
 }
