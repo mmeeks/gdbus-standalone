@@ -85,10 +85,12 @@ typedef enum
  * GDBusError:
  * @G_DBUS_ERROR_FAILED: The operation failed.
  * @G_DBUS_ERROR_CANCELLED: The operation was cancelled.
- * @G_DBUS_ERROR_CONVERSION_FAILED: An attempt to send #GVariant value not compatible with the D-Bus protocol was made.
+ * @G_DBUS_ERROR_CONVERSION_FAILED: An attempt was made to send #GVariant value that isn't
+ * compatible with the D-Bus protocol.
  * @G_DBUS_ERROR_REMOTE_EXCEPTION: A remote exception that couldn't be
- * mapped to a #GError. Use g_dbus_error_get_remote_exception()
- * to extract the D-Bus error name.
+ * mapped to a #GError. Use g_dbus_error_get_dbus_error_name()
+ * to extract the D-Bus error name and g_dbus_error_strip() to get
+ * fix up the message so it matches what was received on the wire.
  * @G_DBUS_ERROR_DBUS_FAILED:
  * A generic error; "something went wrong" - see the error message for
  * more.
@@ -119,8 +121,8 @@ typedef enum
  * socket).
  * @G_DBUS_ERROR_TIMEOUT:
  * Certain timeout errors, possibly ETIMEDOUT on a socket.  Note that
- * #G_DBUS_ERROR_NO_REPLY is used for message reply timeouts. Warning:
- * this is confusingly-named given that #G_DBUS_ERROR_TIMED_OUT also
+ * %G_DBUS_ERROR_NO_REPLY is used for message reply timeouts. Warning:
+ * this is confusingly-named given that %G_DBUS_ERROR_TIMED_OUT also
  * exists. We can't fix it for compatibility reasons so just be
  * careful.
  * @G_DBUS_ERROR_NO_NETWORK:
@@ -139,7 +141,7 @@ typedef enum
  * Method name you invoked isn't known by the object you invoked it on.
  * @G_DBUS_ERROR_TIMED_OUT:
  * Certain timeout errors, e.g. while starting a service. Warning: this is
- * confusingly-named given that #G_DBUS_ERROR_TIMEOUT also exists. We
+ * confusingly-named given that %G_DBUS_ERROR_TIMEOUT also exists. We
  * can't fix it for compatibility reasons so just be careful.
  * @G_DBUS_ERROR_MATCH_RULE_NOT_FOUND:
  * Tried to remove or modify a match rule that didn't exist.
@@ -181,58 +183,59 @@ typedef enum
  * Asked for ADT audit data and it wasn't available.
  * @G_DBUS_ERROR_OBJECT_PATH_IN_USE:
  * There's already an object with the requested object path.
+ * @_G_DBUS_ERROR_MAX_DBUS_ERROR: This is a private member - the value is subject to change.
  *
  * Error codes.
  */
 typedef enum
 {
-  G_DBUS_ERROR_FAILED,                           /*< nick=org.gtk.GDBus.Error.Failed >*/
-  G_DBUS_ERROR_CANCELLED,                        /*< nick=org.gtk.GDBus.Error.Cancelled >*/
-  G_DBUS_ERROR_CONVERSION_FAILED,                /*< nick=org.gtk.GDBus.Error.ConversionFailed >*/
-  G_DBUS_ERROR_REMOTE_EXCEPTION,                 /*< nick=org.gtk.GDBus.Error.RemoteException >*/
+  G_DBUS_ERROR_FAILED,
+  G_DBUS_ERROR_CANCELLED,
+  G_DBUS_ERROR_CONVERSION_FAILED,
+  G_DBUS_ERROR_REMOTE_EXCEPTION,
 
   /* Well-known errors in the org.freedesktop.DBus.Error namespace */
-  G_DBUS_ERROR_DBUS_FAILED            = 1000,    /*< nick=org.freedesktop.DBus.Error.Failed >*/
-  G_DBUS_ERROR_NO_MEMORY,                        /*< nick=org.freedesktop.DBus.Error.NoMemory >*/
-  G_DBUS_ERROR_SERVICE_UNKNOWN,                  /*< nick=org.freedesktop.DBus.Error.ServiceUnknown >*/
-  G_DBUS_ERROR_NAME_HAS_NO_OWNER,                /*< nick=org.freedesktop.DBus.Error.NameHasNoOwner >*/
-  G_DBUS_ERROR_NO_REPLY,                         /*< nick=org.freedesktop.DBus.Error.NoReply >*/
-  G_DBUS_ERROR_IO_ERROR,                         /*< nick=org.freedesktop.DBus.Error.IOError >*/
-  G_DBUS_ERROR_BAD_ADDRESS,                      /*< nick=org.freedesktop.DBus.Error.BadAddress >*/
-  G_DBUS_ERROR_NOT_SUPPORTED,                    /*< nick=org.freedesktop.DBus.Error.NotSupported >*/
-  G_DBUS_ERROR_LIMITS_EXCEEDED,                  /*< nick=org.freedesktop.DBus.Error.LimitsExceeded >*/
-  G_DBUS_ERROR_ACCESS_DENIED,                    /*< nick=org.freedesktop.DBus.Error.AccessDenied >*/
-  G_DBUS_ERROR_AUTH_FAILED,                      /*< nick=org.freedesktop.DBus.Error.AuthFailed >*/
-  G_DBUS_ERROR_NO_SERVER,                        /*< nick=org.freedesktop.DBus.Error.NoServer >*/
-  G_DBUS_ERROR_TIMEOUT,                          /*< nick=org.freedesktop.DBus.Error.Timeout >*/
-  G_DBUS_ERROR_NO_NETWORK,                       /*< nick=org.freedesktop.DBus.Error.NoNetwork >*/
-  G_DBUS_ERROR_ADDRESS_IN_USE,                   /*< nick=org.freedesktop.DBus.Error.AddressInUse >*/
-  G_DBUS_ERROR_DISCONNECTED,                     /*< nick=org.freedesktop.DBus.Error.Disconnected >*/
-  G_DBUS_ERROR_INVALID_ARGS,                     /*< nick=org.freedesktop.DBus.Error.InvalidArgs >*/
-  G_DBUS_ERROR_FILE_NOT_FOUND,                   /*< nick=org.freedesktop.DBus.Error.FileNotFound >*/
-  G_DBUS_ERROR_FILE_EXISTS,                      /*< nick=org.freedesktop.DBus.Error.FileExists >*/
-  G_DBUS_ERROR_UNKNOWN_METHOD,                   /*< nick=org.freedesktop.DBus.Error.UnknownMethod >*/
-  G_DBUS_ERROR_TIMED_OUT,                        /*< nick=org.freedesktop.DBus.Error.TimedOut >*/
-  G_DBUS_ERROR_MATCH_RULE_NOT_FOUND,             /*< nick=org.freedesktop.DBus.Error.MatchRuleNotFound >*/
-  G_DBUS_ERROR_MATCH_RULE_INVALID,               /*< nick=org.freedesktop.DBus.Error.MatchRuleInvalid >*/
-  G_DBUS_ERROR_SPAWN_EXEC_FAILED,                /*< nick=org.freedesktop.DBus.Error.Spawn.ExecFailed >*/
-  G_DBUS_ERROR_SPAWN_FORK_FAILED,                /*< nick=org.freedesktop.DBus.Error.Spawn.ForkFailed >*/
-  G_DBUS_ERROR_SPAWN_CHILD_EXITED,               /*< nick=org.freedesktop.DBus.Error.Spawn.ChildExited >*/
-  G_DBUS_ERROR_SPAWN_CHILD_SIGNALED,             /*< nick=org.freedesktop.DBus.Error.Spawn.ChildSignaled >*/
-  G_DBUS_ERROR_SPAWN_FAILED,                     /*< nick=org.freedesktop.DBus.Error.Spawn.Failed >*/
-  G_DBUS_ERROR_SPAWN_SETUP_FAILED,               /*< nick=org.freedesktop.DBus.Error.Spawn.FailedToSetup >*/
-  G_DBUS_ERROR_SPAWN_CONFIG_INVALID,             /*< nick=org.freedesktop.DBus.Error.Spawn.ConfigInvalid >*/
-  G_DBUS_ERROR_SPAWN_SERVICE_INVALID,            /*< nick=org.freedesktop.DBus.Error.Spawn.ServiceNotValid >*/
-  G_DBUS_ERROR_SPAWN_SERVICE_NOT_FOUND,          /*< nick=org.freedesktop.DBus.Error.Spawn.ServiceNotFound >*/
-  G_DBUS_ERROR_SPAWN_PERMISSIONS_INVALID,        /*< nick=org.freedesktop.DBus.Error.Spawn.PermissionsInvalid >*/
-  G_DBUS_ERROR_SPAWN_FILE_INVALID,               /*< nick=org.freedesktop.DBus.Error.Spawn.FileInvalid >*/
-  G_DBUS_ERROR_SPAWN_NO_MEMORY,                  /*< nick=org.freedesktop.DBus.Error.Spawn.NoMemory >*/
-  G_DBUS_ERROR_UNIX_PROCESS_ID_UNKNOWN,          /*< nick=org.freedesktop.DBus.Error.UnixProcessIdUnknown >*/
-  G_DBUS_ERROR_INVALID_SIGNATURE,                /*< nick=org.freedesktop.DBus.Error.InvalidSignature >*/
-  G_DBUS_ERROR_INVALID_FILE_CONTENT,             /*< nick=org.freedesktop.DBus.Error.InvalidFileContent >*/
-  G_DBUS_ERROR_SELINUX_SECURITY_CONTEXT_UNKNOWN, /*< nick=org.freedesktop.DBus.Error.SELinuxSecurityContextUnknown >*/
-  G_DBUS_ERROR_ADT_AUDIT_DATA_UNKNOWN,           /*< nick=org.freedesktop.DBus.Error.AdtAuditDataUnknown >*/
-  G_DBUS_ERROR_OBJECT_PATH_IN_USE,               /*< nick=org.freedesktop.DBus.Error.ObjectPathInUse >*/
+  G_DBUS_ERROR_DBUS_FAILED            = 1000,    /* org.freedesktop.DBus.Error.Failed */
+  G_DBUS_ERROR_NO_MEMORY,                        /* org.freedesktop.DBus.Error.NoMemory */
+  G_DBUS_ERROR_SERVICE_UNKNOWN,                  /* org.freedesktop.DBus.Error.ServiceUnknown */
+  G_DBUS_ERROR_NAME_HAS_NO_OWNER,                /* org.freedesktop.DBus.Error.NameHasNoOwner */
+  G_DBUS_ERROR_NO_REPLY,                         /* org.freedesktop.DBus.Error.NoReply */
+  G_DBUS_ERROR_IO_ERROR,                         /* org.freedesktop.DBus.Error.IOError */
+  G_DBUS_ERROR_BAD_ADDRESS,                      /* org.freedesktop.DBus.Error.BadAddress */
+  G_DBUS_ERROR_NOT_SUPPORTED,                    /* org.freedesktop.DBus.Error.NotSupported */
+  G_DBUS_ERROR_LIMITS_EXCEEDED,                  /* org.freedesktop.DBus.Error.LimitsExceeded */
+  G_DBUS_ERROR_ACCESS_DENIED,                    /* org.freedesktop.DBus.Error.AccessDenied */
+  G_DBUS_ERROR_AUTH_FAILED,                      /* org.freedesktop.DBus.Error.AuthFailed */
+  G_DBUS_ERROR_NO_SERVER,                        /* org.freedesktop.DBus.Error.NoServer */
+  G_DBUS_ERROR_TIMEOUT,                          /* org.freedesktop.DBus.Error.Timeout */
+  G_DBUS_ERROR_NO_NETWORK,                       /* org.freedesktop.DBus.Error.NoNetwork */
+  G_DBUS_ERROR_ADDRESS_IN_USE,                   /* org.freedesktop.DBus.Error.AddressInUse */
+  G_DBUS_ERROR_DISCONNECTED,                     /* org.freedesktop.DBus.Error.Disconnected */
+  G_DBUS_ERROR_INVALID_ARGS,                     /* org.freedesktop.DBus.Error.InvalidArgs */
+  G_DBUS_ERROR_FILE_NOT_FOUND,                   /* org.freedesktop.DBus.Error.FileNotFound */
+  G_DBUS_ERROR_FILE_EXISTS,                      /* org.freedesktop.DBus.Error.FileExists */
+  G_DBUS_ERROR_UNKNOWN_METHOD,                   /* org.freedesktop.DBus.Error.UnknownMethod */
+  G_DBUS_ERROR_TIMED_OUT,                        /* org.freedesktop.DBus.Error.TimedOut */
+  G_DBUS_ERROR_MATCH_RULE_NOT_FOUND,             /* org.freedesktop.DBus.Error.MatchRuleNotFound */
+  G_DBUS_ERROR_MATCH_RULE_INVALID,               /* org.freedesktop.DBus.Error.MatchRuleInvalid */
+  G_DBUS_ERROR_SPAWN_EXEC_FAILED,                /* org.freedesktop.DBus.Error.Spawn.ExecFailed */
+  G_DBUS_ERROR_SPAWN_FORK_FAILED,                /* org.freedesktop.DBus.Error.Spawn.ForkFailed */
+  G_DBUS_ERROR_SPAWN_CHILD_EXITED,               /* org.freedesktop.DBus.Error.Spawn.ChildExited */
+  G_DBUS_ERROR_SPAWN_CHILD_SIGNALED,             /* org.freedesktop.DBus.Error.Spawn.ChildSignaled */
+  G_DBUS_ERROR_SPAWN_FAILED,                     /* org.freedesktop.DBus.Error.Spawn.Failed */
+  G_DBUS_ERROR_SPAWN_SETUP_FAILED,               /* org.freedesktop.DBus.Error.Spawn.FailedToSetup */
+  G_DBUS_ERROR_SPAWN_CONFIG_INVALID,             /* org.freedesktop.DBus.Error.Spawn.ConfigInvalid */
+  G_DBUS_ERROR_SPAWN_SERVICE_INVALID,            /* org.freedesktop.DBus.Error.Spawn.ServiceNotValid */
+  G_DBUS_ERROR_SPAWN_SERVICE_NOT_FOUND,          /* org.freedesktop.DBus.Error.Spawn.ServiceNotFound */
+  G_DBUS_ERROR_SPAWN_PERMISSIONS_INVALID,        /* org.freedesktop.DBus.Error.Spawn.PermissionsInvalid */
+  G_DBUS_ERROR_SPAWN_FILE_INVALID,               /* org.freedesktop.DBus.Error.Spawn.FileInvalid */
+  G_DBUS_ERROR_SPAWN_NO_MEMORY,                  /* org.freedesktop.DBus.Error.Spawn.NoMemory */
+  G_DBUS_ERROR_UNIX_PROCESS_ID_UNKNOWN,          /* org.freedesktop.DBus.Error.UnixProcessIdUnknown */
+  G_DBUS_ERROR_INVALID_SIGNATURE,                /* org.freedesktop.DBus.Error.InvalidSignature */
+  G_DBUS_ERROR_INVALID_FILE_CONTENT,             /* org.freedesktop.DBus.Error.InvalidFileContent */
+  G_DBUS_ERROR_SELINUX_SECURITY_CONTEXT_UNKNOWN, /* org.freedesktop.DBus.Error.SELinuxSecurityContextUnknown */
+  G_DBUS_ERROR_ADT_AUDIT_DATA_UNKNOWN,           /* org.freedesktop.DBus.Error.AdtAuditDataUnknown */
+  G_DBUS_ERROR_OBJECT_PATH_IN_USE,               /* org.freedesktop.DBus.Error.ObjectPathInUse */
 
   /* This is a private member - the value is subject to change */
   _G_DBUS_ERROR_MAX_DBUS_ERROR                   /*< skip >*/

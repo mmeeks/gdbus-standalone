@@ -566,8 +566,17 @@ g_dbus_method_invocation_return_value (GDBusMethodInvocation *invocation,
  *
  * Finishes handling a D-Bus method call by returning an error.
  *
- * (TODO: something about how the error will be encoded on the wire, how it
- * can be recovered and so on.)
+ * See g_dbus_error_encode_gerror() for details about what error name
+ * will be returned on the wire. In a nutshell, if the given error is
+ * registered using g_dbus_error_register_error() the name given
+ * during registration is used. Otherwise, a name of the form
+ * <literal>org.gtk.GDBus.UnmappedGError.Quark0x...</literal> is
+ * used. This provides transparent mapping of #GError between
+ * applications using GDBus.
+ *
+ * If you are writing an application intended to be portable,
+ * <emphasis>always</emphasis> register errors with g_dbus_error_register_error()
+ * or use g_dbus_method_invocation_return_dbus_error().
  *
  * This method will free @invocation, you cannot use it afterwards.
  */

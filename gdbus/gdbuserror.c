@@ -37,7 +37,77 @@
  * @short_description: Error helper functions
  * @include: gdbus/gdbus.h
  *
- * Contains error helper functions for GDBus.
+ * Error helper functions for GDBus.
+ *
+ * All facilities in GDBus (such as g_dbus_connection_invoke_method_with_reply_sync())
+ * that return errors as a result of remote method invocations use #GError. To get
+ * the actual D-Bus error name, use g_dbus_error_get_dbus_error_name().
+ *
+ * In addition, facilities that is used to return errors to a remote
+ * caller also use #GError. See g_dbus_method_invocation_return_error()
+ * for discussion about how the D-Bus error name is set.
+ *
+ * Applications that receive and return errors typically wants to
+ * associate a #GError domain with a set of D-Bus errors in order to
+ * automatically map from wire-format errors to #GError and back. This
+ * is typically done in the function returning the #GQuark for the
+ * error domain:
+ * <programlisting>
+ * #define FOO_BAR_ERROR (foo_bar_error_quark ())
+ *
+ * [...]
+ *
+ * typedef enum
+ * {
+ *   FOO_BAR_ERROR_FAILED,
+ *   FOO_BAR_ERROR_ANOTHER_ERROR,
+ *   FOO_BAR_ERROR_SOME_THIRD_ERROR,
+ *   FOO_BAR_ERROR_MAX_ERROR_NUM      /<!-- -->*< skip >*<!-- -->/
+ * } FooBarError;
+ *
+ * [...]
+ *
+ * GQuark
+ * foo_bar_error_quark (void)
+ * {
+ *   static volatile gsize quark_volatile = 0;
+ *
+ *   if (g_once_init_enter (&quark_volatile))
+ *     {
+ *       guint n;
+ *       GQuark quark;
+ *       static const struct
+ *       {
+ *         gint error_code;
+ *         const gchar *dbus_error_name;
+ *       } error_mapping[] =
+ *           {
+ *             {FOO_BAR_ERROR_FAILED,           "org.project.Foo.Bar.Error.Failed"},
+ *             {FOO_BAR_ERROR_ANOTHER_ERROR,    "org.project.Foo.Bar.Error.AnotherError"},
+ *             {FOO_BAR_ERROR_SOME_THIRD_ERROR, "org.project.Foo.Bar.Error.SomeThirdError"},
+ *             {-1, NULL}
+ *           };
+ *
+ *       quark = g_quark_from_static_string ("foo-bar-error-quark");
+ *
+ *       for (n = 0; error_mapping[n].dbus_error_name != NULL; n++)
+ *         {
+ *           g_assert (g_dbus_error_register_error (quark, /<!-- -->* Can't use FOO_BAR_ERROR here because of reentrancy *<!-- -->/
+ *                                                  error_mapping[n].error_code,
+ *                                                  error_mapping[n].dbus_error_name));
+ *         }
+ *       g_assert (n == FOO_BAR_ERROR_MAX_ERROR_NUM);
+ *       g_once_init_leave (&quark_volatile, quark);
+ *     }
+ *
+ *   return (GQuark) quark_volatile;
+ * }
+ * </programlisting>
+ * With this setup, a server can transparently pass e.g. %FOO_BAR_ERROR_ANOTHER_ERROR and
+ * clients will see the D-Bus error name <literal>org.project.Foo.Bar.Error.AnotherError</literal>.
+ * If the client is using GDBus, the client will see also  %FOO_BAR_ERROR_ANOTHER_ERROR instead
+ * of %G_DBUS_ERROR_REMOTE_EXCEPTION. Note that GDBus clients can still recover
+ * <literal>org.project.Foo.Bar.Error.AnotherError</literal> using g_dbus_error_get_dbus_error_name().
  */
 
 /**
@@ -50,14 +120,12 @@
 GQuark
 g_dbus_error_quark (void)
 {
-  GQuark quark;
-  static volatile gsize has_registered__volatile = 0;
+  static volatile gsize quark_volatile = 0;
 
-  quark = g_quark_from_static_string ("g-dbus-error-quark");
-
-  if (g_once_init_enter (&has_registered__volatile))
+  if (g_once_init_enter (&quark_volatile))
     {
       guint n;
+      GQuark quark;
       static const struct
       {
         gint error_code;
@@ -108,6 +176,8 @@ g_dbus_error_quark (void)
             {-1, NULL}
           };
 
+      quark = g_quark_from_static_string ("g-dbus-error-quark");
+
       for (n = 0; error_mapping[n].dbus_error_name != NULL; n++)
         {
           g_assert (g_dbus_error_register_error (quark, /* Can't use G_DBUS_ERROR here because of reentrancy ;-) */
@@ -116,10 +186,10 @@ g_dbus_error_quark (void)
         }
       g_assert (n == _G_DBUS_ERROR_MAX_DBUS_ERROR - 1000);
 
-      g_once_init_leave (&has_registered__volatile, 1);
+      g_once_init_leave (&quark_volatile, quark);
     }
 
-  return quark;
+  return (GQuark) quark_volatile;
 }
 
 static gboolean
@@ -444,7 +514,6 @@ g_dbus_error_get_dbus_error_name (const GError *error)
  *
  * If a match against a registered error is not found and the D-Bus
  * error name is in a form as returned by g_dbus_error_encode_gerror()
- * (e.g. org.gtk.GDBus.UnmappedGError.Quark_HEXENCODED_QUARK_NAME_.Code_ERROR_CODE).
  * the error domain and code encoded in the name is used to
  * create the #GError. Also, @dbus_error_name is added to the error message
  * such that it can be recovered with g_dbus_error_get_dbus_error_name().
@@ -650,11 +719,11 @@ g_dbus_error_strip (GError *error)
  * @error: A #GError.
  *
  * Creates a D-Bus error name to use for @error. If @error matches
- * a registered error (cf. g_dbus_register_error()), the corresponding
+ * a registered error (cf. g_dbus_error_register_error()), the corresponding
  * D-Bus error name will be returned.
  *
  * Otherwise the a name of the form
- * org.gtk.GDBus.UnmappedGError.Quark_HEXENCODED_QUARK_NAME_.Code_ERROR_CODE
+ * <literal>org.gtk.GDBus.UnmappedGError.Quark0xHEXENCODED_QUARK_NAME_.Code_ERROR_CODE</literal>
  * will be used. This allows other GDBus applications to map the error
  * on the wire back to a #GError using g_dbus_error_new_for_dbus_error().
  *
