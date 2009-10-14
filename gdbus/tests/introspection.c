@@ -72,14 +72,14 @@ introspection_on_proxy_appeared (GDBusConnection *connection,
 
   /* for now we only check a couple of things. TODO: check more things */
 
-  interface_info = g_dbus_node_info_lookup_interface_for_name (node_info, "com.example.NonExistantInterface");
+  interface_info = g_dbus_node_info_lookup_interface (node_info, "com.example.NonExistantInterface");
   g_assert (interface_info == NULL);
 
-  interface_info = g_dbus_node_info_lookup_interface_for_name (node_info, "org.freedesktop.DBus.Introspectable");
+  interface_info = g_dbus_node_info_lookup_interface (node_info, "org.freedesktop.DBus.Introspectable");
   g_assert (interface_info != NULL);
-  method_info = g_dbus_interface_info_lookup_method_for_name (interface_info, "NonExistantMethod");
+  method_info = g_dbus_interface_info_lookup_method (interface_info, "NonExistantMethod");
   g_assert (method_info == NULL);
-  method_info = g_dbus_interface_info_lookup_method_for_name (interface_info, "Introspect");
+  method_info = g_dbus_interface_info_lookup_method (interface_info, "Introspect");
   g_assert (method_info != NULL);
   g_assert_cmpstr (method_info->in_signature, ==, "");
   g_assert_cmpint (method_info->in_num_args, ==, 0);
@@ -90,9 +90,9 @@ introspection_on_proxy_appeared (GDBusConnection *connection,
   g_assert (method_info->out_args[0].name != NULL);
   g_assert_cmpstr (method_info->out_args[0].signature, ==, "s");
 
-  interface_info = g_dbus_node_info_lookup_interface_for_name (node_info, "com.example.Frob");
+  interface_info = g_dbus_node_info_lookup_interface (node_info, "com.example.Frob");
   g_assert (interface_info != NULL);
-  signal_info = g_dbus_interface_info_lookup_signal_for_name (interface_info, "TestSignal");
+  signal_info = g_dbus_interface_info_lookup_signal (interface_info, "TestSignal");
   g_assert (signal_info != NULL);
   g_assert_cmpstr (signal_info->signature, ==, "sov");
 

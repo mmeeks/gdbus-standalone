@@ -126,7 +126,6 @@ g_dbus_signal_info_free (GDBusSignalInfo *info)
   guint n;
 
   g_free ((gpointer) info->name);
-  g_free ((gpointer) info->g_name);
 
   g_free ((gpointer) info->signature);
   for (n = 0; n < info->num_args; n++)
@@ -140,7 +139,6 @@ static void
 g_dbus_property_info_free (GDBusPropertyInfo *info)
 {
   g_free ((gpointer) info->name);
-  g_free ((gpointer) info->g_name);
   g_free ((gpointer) info->signature);
   g_dbus_introspector_free_annotation_array ((GDBusAnnotationInfo *) info->annotations);
 }
@@ -1653,6 +1651,8 @@ g_dbus_node_info_new_for_xml (const gchar  *xml_data,
  *
  * Looks up the value of an annotation.
  *
+ * This cost of this function is O(n) in number of annotations.
+ *
  * Returns: The value or %NULL if not found. Do not free, it is owned by @annotations.
  **/
 const gchar *
@@ -1680,17 +1680,19 @@ g_dbus_annotation_info_lookup (const GDBusAnnotationInfo *annotations,
 /* ---------------------------------------------------------------------------------------------------- */
 
 /**
- * g_dbus_interface_info_lookup_method_for_name:
+ * g_dbus_interface_info_lookup_method:
  * @interface_info: A #GDBusInterfaceInfo.
  * @name: A D-Bus method name (typically in CamelCase)
  *
  * Looks up information about a method.
  *
+ * This cost of this function is O(n) in number of methods.
+ *
  * Returns: A #GDBusMethodInfo or %NULL if not found. Do not free, it is owned by @interface_info.
  **/
 const GDBusMethodInfo *
-g_dbus_interface_info_lookup_method_for_name (const GDBusInterfaceInfo *interface_info,
-                                              const gchar              *name)
+g_dbus_interface_info_lookup_method (const GDBusInterfaceInfo *interface_info,
+                                     const gchar              *name)
 {
   guint n;
   const GDBusMethodInfo *result;
@@ -1715,17 +1717,19 @@ g_dbus_interface_info_lookup_method_for_name (const GDBusInterfaceInfo *interfac
 /* ---------------------------------------------------------------------------------------------------- */
 
 /**
- * g_dbus_interface_info_lookup_signal_for_name:
+ * g_dbus_interface_info_lookup_signal:
  * @interface_info: A #GDBusInterfaceInfo.
  * @name: A D-Bus signal name (typically in CamelCase)
  *
  * Looks up information about a signal.
  *
+ * This cost of this function is O(n) in number of signals.
+ *
  * Returns: A #GDBusSignalInfo or %NULL if not found. Do not free, it is owned by @interface_info.
  **/
 const GDBusSignalInfo *
-g_dbus_interface_info_lookup_signal_for_name   (const GDBusInterfaceInfo *interface_info,
-                                                const gchar              *name)
+g_dbus_interface_info_lookup_signal (const GDBusInterfaceInfo *interface_info,
+                                     const gchar              *name)
 {
   guint n;
   const GDBusSignalInfo *result;
@@ -1747,53 +1751,22 @@ g_dbus_interface_info_lookup_signal_for_name   (const GDBusInterfaceInfo *interf
   return result;
 }
 
-/**
- * g_dbus_interface_info_lookup_signal_for_g_name:
- * @interface_info: A #GDBusInterfaceInfo.
- * @g_name: A GObject signal name (lower case with hyphens)
- *
- * Looks up information about a signal.
- *
- * Returns: A #GDBusSignalInfo or %NULL if not found. Do not free, it is owned by @interface_info.
- **/
-const GDBusSignalInfo *
-g_dbus_interface_info_lookup_signal_for_g_name   (const GDBusInterfaceInfo *interface_info,
-                                                  const gchar              *g_name)
-{
-  guint n;
-  const GDBusSignalInfo *result;
-
-  for (n = 0; n < interface_info->num_signals; n++)
-    {
-      const GDBusSignalInfo *i = interface_info->signals + n;
-
-      if (g_strcmp0 (i->g_name, g_name) == 0)
-        {
-          result = i;
-          goto out;
-        }
-    }
-
-  result = NULL;
-
- out:
-  return result;
-}
-
 /* ---------------------------------------------------------------------------------------------------- */
 
 /**
- * g_dbus_interface_info_lookup_property_for_name:
+ * g_dbus_interface_info_lookup_property:
  * @interface_info: A #GDBusInterfaceInfo.
  * @name: A D-Bus property name (typically in CamelCase).
  *
  * Looks up information about a property.
  *
+ * This cost of this function is O(n) in number of properties.
+ *
  * Returns: A #GDBusPropertyInfo or %NULL if not found. Do not free, it is owned by @interface_info.
  **/
 const GDBusPropertyInfo *
-g_dbus_interface_info_lookup_property_for_name (const GDBusInterfaceInfo *interface_info,
-                                                const gchar              *name)
+g_dbus_interface_info_lookup_property (const GDBusInterfaceInfo *interface_info,
+                                       const gchar              *name)
 {
   guint n;
   const GDBusPropertyInfo *result;
@@ -1815,53 +1788,22 @@ g_dbus_interface_info_lookup_property_for_name (const GDBusInterfaceInfo *interf
   return result;
 }
 
-/**
- * g_dbus_interface_info_lookup_property_for_g_name:
- * @interface_info: A #GDBusInterfaceInfo.
- * @g_name: A GObject property name (e.g. lower case with hyphens).
- *
- * Looks up information about a property.
- *
- * Returns: A #GDBusPropertyInfo or %NULL if not found. Do not free, it is owned by @interface_info.
- **/
-const GDBusPropertyInfo *
-g_dbus_interface_info_lookup_property_for_g_name (const GDBusInterfaceInfo *interface_info,
-                                                  const gchar              *g_name)
-{
-  guint n;
-  const GDBusPropertyInfo *result;
-
-  for (n = 0; n < interface_info->num_properties; n++)
-    {
-      const GDBusPropertyInfo *i = interface_info->properties + n;
-
-      if (g_strcmp0 (i->g_name, g_name) == 0)
-        {
-          result = i;
-          goto out;
-        }
-    }
-
-  result = NULL;
-
- out:
-  return result;
-}
-
 /* ---------------------------------------------------------------------------------------------------- */
 
 /**
- * g_dbus_node_info_lookup_interface_for_name:
+ * g_dbus_node_info_lookup_interface:
  * @node_info: A #GDBusNodeInfo.
  * @name: A D-Bus interface name.
  *
  * Looks up information about an interface.
  *
+ * This cost of this function is O(n) in number of interfaces.
+ *
  * Returns: A #GDBusInterfaceInfo or %NULL if not found. Do not free, it is owned by @node_info.
  **/
 const GDBusInterfaceInfo *
-g_dbus_node_info_lookup_interface_for_name (const GDBusNodeInfo *node_info,
-                                            const gchar         *name)
+g_dbus_node_info_lookup_interface (const GDBusNodeInfo *node_info,
+                                   const gchar         *name)
 {
   guint n;
   const GDBusInterfaceInfo *result;

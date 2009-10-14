@@ -95,7 +95,6 @@ struct _GDBusMethodInfo
 /**
  * GDBusSignalInfo:
  * @name: The name of the D-Bus signal, e.g. @NameOwnerChanged.
- * @g_name: The GObject name of the D-Bus signal (in lower case with hyphens), e.g. <emphasis>name-owner-changed</emphasis>.
  * @signature: The combined D-Bus signature of all arguments of the signal (@num_args complete types).
  * @num_args: Number of arguments of the signal.
  * @args: A pointer to an array of @num_args #GDBusArgInfo structures or %NULL if @num_args is 0.
@@ -106,7 +105,6 @@ struct _GDBusMethodInfo
 struct _GDBusSignalInfo
 {
   const gchar                *name;
-  const gchar                *g_name;
 
   const gchar                *signature;
   guint                       num_args;
@@ -118,7 +116,6 @@ struct _GDBusSignalInfo
 /**
  * GDBusPropertyInfo:
  * @name: The name of the D-Bus property, e.g. @SupportedFilesystems.
- * @g_name: The GObject name of the D-Bus property (in lower case with hyphens), e.g. <emphasis>supported-filesystems</emphasis>.
  * @signature: The D-Bus signature of the property (a single complete type).
  * @flags: Access control flags for the property.
  * @annotations: A pointer to an array of annotations for the property or %NULL if there are no annotations.
@@ -128,7 +125,6 @@ struct _GDBusSignalInfo
 struct _GDBusPropertyInfo
 {
   const gchar                *name;
-  const gchar                *g_name;
   const gchar                *signature;
   GDBusPropertyInfoFlags      flags;
   const GDBusAnnotationInfo  *annotations;
@@ -187,31 +183,26 @@ struct _GDBusNodeInfo
   const GDBusAnnotationInfo  *annotations;
 };
 
-const gchar              *g_dbus_annotation_info_lookup                    (const GDBusAnnotationInfo *annotations,
-                                                                            const gchar               *name);
+const gchar              *g_dbus_annotation_info_lookup          (const GDBusAnnotationInfo *annotations,
+                                                                  const gchar               *name);
+const GDBusMethodInfo    *g_dbus_interface_info_lookup_method    (const GDBusInterfaceInfo  *interface_info,
+                                                                  const gchar               *name);
+const GDBusSignalInfo    *g_dbus_interface_info_lookup_signal    (const GDBusInterfaceInfo  *interface_info,
+                                                                  const gchar               *name);
+const GDBusPropertyInfo  *g_dbus_interface_info_lookup_property  (const GDBusInterfaceInfo  *interface_info,
+                                                                  const gchar               *name);
+void                      g_dbus_interface_info_generate_xml     (const GDBusInterfaceInfo  *interface_info,
+                                                                  guint                      indent,
+                                                                  GString                   *string_builder);
 
-const GDBusMethodInfo    *g_dbus_interface_info_lookup_method_for_name     (const GDBusInterfaceInfo  *interface_info,
-                                                                            const gchar               *name);
-const GDBusSignalInfo    *g_dbus_interface_info_lookup_signal_for_name     (const GDBusInterfaceInfo  *interface_info,
-                                                                            const gchar               *name);
-const GDBusSignalInfo    *g_dbus_interface_info_lookup_signal_for_g_name   (const GDBusInterfaceInfo  *interface_info,
-                                                                            const gchar               *g_name);
-const GDBusPropertyInfo  *g_dbus_interface_info_lookup_property_for_name   (const GDBusInterfaceInfo  *interface_info,
-                                                                            const gchar               *name);
-const GDBusPropertyInfo  *g_dbus_interface_info_lookup_property_for_g_name (const GDBusInterfaceInfo  *interface_info,
-                                                                            const gchar               *g_name);
-void                      g_dbus_interface_info_generate_xml               (const GDBusInterfaceInfo  *interface_info,
-                                                                            guint                      indent,
-                                                                            GString                   *string_builder);
-
-GDBusNodeInfo            *g_dbus_node_info_new_for_xml                     (const gchar               *xml_data,
-                                                                            GError                   **error);
-const GDBusInterfaceInfo *g_dbus_node_info_lookup_interface_for_name       (const GDBusNodeInfo       *node_info,
-                                                                            const gchar               *name);
-void                      g_dbus_node_info_free                            (GDBusNodeInfo             *node_info);
-void                      g_dbus_node_info_generate_xml                    (const GDBusNodeInfo       *node_info,
-                                                                            guint                      indent,
-                                                                            GString                   *string_builder);
+GDBusNodeInfo            *g_dbus_node_info_new_for_xml           (const gchar               *xml_data,
+                                                                  GError                   **error);
+const GDBusInterfaceInfo *g_dbus_node_info_lookup_interface      (const GDBusNodeInfo       *node_info,
+                                                                  const gchar               *name);
+void                      g_dbus_node_info_free                  (GDBusNodeInfo             *node_info);
+void                      g_dbus_node_info_generate_xml          (const GDBusNodeInfo       *node_info,
+                                                                  guint                      indent,
+                                                                  GString                   *string_builder);
 
 G_END_DECLS
 

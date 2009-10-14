@@ -54,7 +54,7 @@ static const GDBusMethodInfo foo_method_info[] =
 static const GDBusSignalInfo foo_signal_info[] =
 {
   {
-    "SignalAlpha", "signal-alpha",
+    "SignalAlpha",
     "", 0, NULL,
     NULL
   }
@@ -63,7 +63,7 @@ static const GDBusSignalInfo foo_signal_info[] =
 static const GDBusPropertyInfo foo_property_info[] =
 {
   {
-    "PropertyUno", "property-uno",
+    "PropertyUno",
     "s",
     G_DBUS_PROPERTY_INFO_FLAGS_READABLE,
     NULL
@@ -106,7 +106,7 @@ static const GDBusMethodInfo bar_method_info[] =
 static const GDBusSignalInfo bar_signal_info[] =
 {
   {
-    "SignalMars", "signal-mars",
+    "SignalMars",
     "", 0, NULL,
     NULL
   }
@@ -115,7 +115,7 @@ static const GDBusSignalInfo bar_signal_info[] =
 static const GDBusPropertyInfo bar_property_info[] =
 {
   {
-    "PropertyDuo", "property-duo",
+    "PropertyDuo",
     "s",
     G_DBUS_PROPERTY_INFO_FLAGS_READABLE,
     NULL

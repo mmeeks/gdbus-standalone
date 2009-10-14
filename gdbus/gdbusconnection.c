@@ -2220,8 +2220,9 @@ dbus_1_obj_vtable_message_func (DBusConnection *connection,
             {
               DBusMessage *reply;
 
-              method_info = g_dbus_interface_info_lookup_method_for_name (ei->introspection_data,
-                                                                          dbus_message_get_member (message));
+              /* TODO: the cost of this is O(n) - it might be worth caching the result */
+              method_info = g_dbus_interface_info_lookup_method (ei->introspection_data,
+                                                                 dbus_message_get_member (message));
               if (method_info == NULL)
                 {
                   reply = dbus_message_new_error (message,
