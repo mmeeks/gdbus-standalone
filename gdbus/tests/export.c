@@ -468,12 +468,12 @@ test_object_registration (void)
   g_assert (registration_id > 0);
   num_successful_registrations++;
 
-  /* check we can pass NULL for @object, @introspection_data and @vtable */
+  /* check we can pass NULL for @object and @vtable */
   null_registration_id = g_dbus_connection_register_object (c,
                                                             NULL,
                                                             "/foo/boss/interns/intern3",
                                                             bar_interface_info.name,
-                                                            NULL,
+                                                            &bar_interface_info,
                                                             NULL,
                                                             on_object_unregistered,
                                                             &data,
