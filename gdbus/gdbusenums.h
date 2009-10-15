@@ -87,10 +87,11 @@ typedef enum
  * @G_DBUS_ERROR_CANCELLED: The operation was cancelled.
  * @G_DBUS_ERROR_CONVERSION_FAILED: An attempt was made to send #GVariant value that isn't
  * compatible with the D-Bus protocol.
- * @G_DBUS_ERROR_REMOTE_EXCEPTION: A remote exception that couldn't be
- * mapped to a #GError. Use g_dbus_error_get_dbus_error_name()
- * to extract the D-Bus error name and g_dbus_error_strip() to get
- * fix up the message so it matches what was received on the wire.
+ * @G_DBUS_ERROR_REMOTE_ERROR: A remote object generated an error
+ * that doesn't correspond to a locally registered #GError error domain.
+ * Use g_dbus_error_get_dbus_error_name() to extract the D-Bus error name
+ * and g_dbus_error_strip() to get fix up the message so it matches what
+ * was received on the wire.
  * @G_DBUS_ERROR_DBUS_FAILED:
  * A generic error; "something went wrong" - see the error message for
  * more.
@@ -192,7 +193,7 @@ typedef enum
   G_DBUS_ERROR_FAILED,
   G_DBUS_ERROR_CANCELLED,
   G_DBUS_ERROR_CONVERSION_FAILED,
-  G_DBUS_ERROR_REMOTE_EXCEPTION,
+  G_DBUS_ERROR_REMOTE_ERROR,
 
   /* Well-known errors in the org.freedesktop.DBus.Error namespace */
   G_DBUS_ERROR_DBUS_FAILED            = 1000,    /* org.freedesktop.DBus.Error.Failed */

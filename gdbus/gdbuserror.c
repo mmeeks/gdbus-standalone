@@ -106,7 +106,7 @@
  * With this setup, a server can transparently pass e.g. %FOO_BAR_ERROR_ANOTHER_ERROR and
  * clients will see the D-Bus error name <literal>org.project.Foo.Bar.Error.AnotherError</literal>.
  * If the client is using GDBus, the client will see also  %FOO_BAR_ERROR_ANOTHER_ERROR instead
- * of %G_DBUS_ERROR_REMOTE_EXCEPTION. Note that GDBus clients can still recover
+ * of %G_DBUS_ERROR_REMOTE_ERROR. Note that GDBus clients can still recover
  * <literal>org.project.Foo.Bar.Error.AnotherError</literal> using g_dbus_error_get_dbus_error_name().
  */
 
@@ -518,7 +518,7 @@ g_dbus_error_get_dbus_error_name (const GError *error)
  * create the #GError. Also, @dbus_error_name is added to the error message
  * such that it can be recovered with g_dbus_error_get_dbus_error_name().
  *
- * Otherwise, a #GError with the error code %G_DBUS_ERROR_REMOTE_EXCEPTION
+ * Otherwise, a #GError with the error code %G_DBUS_ERROR_REMOTE_ERROR
  * in the #G_DBUS_ERROR error domain is returned. Also, @dbus_error_name is
  * added to the error message such that it can be recovered with
  * g_dbus_error_get_dbus_error_name().
@@ -580,7 +580,7 @@ g_dbus_error_new_for_dbus_error (const gchar *dbus_error_name,
       else
         {
           error = g_error_new (G_DBUS_ERROR,
-                               G_DBUS_ERROR_REMOTE_EXCEPTION,
+                               G_DBUS_ERROR_REMOTE_ERROR,
                                "GDBus.Error:%s: %s",
                                dbus_error_name,
                                dbus_error_message);

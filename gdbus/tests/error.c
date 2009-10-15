@@ -84,7 +84,7 @@ check_unregistered_error (const gchar *given_dbus_error_name)
   gchar *dbus_error_name;
 
   error = g_dbus_error_new_for_dbus_error (given_dbus_error_name, "test message");
-  g_assert_error (error, G_DBUS_ERROR, G_DBUS_ERROR_REMOTE_EXCEPTION);
+  g_assert_error (error, G_DBUS_ERROR, G_DBUS_ERROR_REMOTE_ERROR);
   dbus_error_name = g_dbus_error_get_dbus_error_name (error);
   g_assert_cmpstr (dbus_error_name, ==, given_dbus_error_name);
   g_free (dbus_error_name);
@@ -109,7 +109,7 @@ test_unregistered_errors (void)
    * For example, if "com.example.Error.Failed" is not registered, then check
    *
    *  - Creating a GError for e.g. "com.example.Error.Failed" has (error_domain, code) ==
-   *    (G_DBUS_ERROR, G_DBUS_ERROR_REMOTE_EXCEPTION)
+   *    (G_DBUS_ERROR, G_DBUS_ERROR_REMOTE_ERROR)
    *
    *  - That it is possible to recover e.g. "com.example.Error.Failed" from that
    *    GError.

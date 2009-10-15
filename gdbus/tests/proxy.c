@@ -66,7 +66,7 @@ test_methods (GDBusConnection *connection,
                                             -1,
                                             NULL,
                                             &error);
-  g_assert_error (error, G_DBUS_ERROR, G_DBUS_ERROR_REMOTE_EXCEPTION);
+  g_assert_error (error, G_DBUS_ERROR, G_DBUS_ERROR_REMOTE_ERROR);
   g_assert (result == NULL);
   dbus_error_name = g_dbus_error_get_dbus_error_name (error);
   g_assert_cmpstr (dbus_error_name, ==, "com.example.TestException");
