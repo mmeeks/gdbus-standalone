@@ -20,19 +20,22 @@ static const gchar introspection_xml[] =
   "    </signal>"
   "    <property type='s' name='FluxCapicitorName' access='read'/>"
   "    <property type='s' name='Title' access='readwrite'/>"
+  "    <property type='s' name='ReadingAlwaysThrowsError' access='read'/>"
+  "    <property type='s' name='WritingAlwaysThrowsError' access='readwrite'/>"
+  "    <property type='s' name='OnlyWritable' access='write'/>"
   "  </interface>"
   "</node>";
 
 /* ---------------------------------------------------------------------------------------------------- */
 
 static void
-test_handle_method_call (GDBusConnection       *connection,
-                         GObject               *object,
-                         const gchar           *sender,
-                         const gchar           *object_path,
-                         const gchar           *method_name,
-                         GVariant              *parameters,
-                         GDBusMethodInvocation *invocation)
+handle_method_call (GDBusConnection       *connection,
+                    GObject               *object,
+                    const gchar           *sender,
+                    const gchar           *object_path,
+                    const gchar           *method_name,
+                    GVariant              *parameters,
+                    GDBusMethodInvocation *invocation)
 {
   if (g_strcmp0 (method_name, "HelloWorld") == 0)
     {
@@ -71,10 +74,84 @@ test_handle_method_call (GDBusConnection       *connection,
     }
 }
 
-/* for now */
-static const GDBusInterfaceVTable test_interface_vtable =
+static gchar *_global_title = NULL;
+
+static GVariant *
+handle_get_property (GDBusConnection  *connection,
+                     GObject          *object,
+                     const gchar      *sender,
+                     const gchar      *object_path,
+                     const gchar      *property_name,
+                     GError          **error)
 {
-  test_handle_method_call
+  GVariant *ret;
+
+  ret = NULL;
+  if (g_strcmp0 (property_name, "FluxCapicitorName") == 0)
+    {
+      ret = g_variant_new_string ("DeLorean");
+    }
+  else if (g_strcmp0 (property_name, "Title") == 0)
+    {
+      if (_global_title == NULL)
+        _global_title = g_strdup ("Back To C!");
+      ret = g_variant_new_string (_global_title);
+    }
+  else if (g_strcmp0 (property_name, "ReadingAlwaysThrowsError") == 0)
+    {
+      g_set_error (error,
+                   G_DBUS_ERROR,
+                   G_DBUS_ERROR_FAILED,
+                   "Hello %s. I thought I said reading this property "
+                   "always results in an error. kthxbye",
+                   sender);
+    }
+  else if (g_strcmp0 (property_name, "WritingAlwaysThrowsError") == 0)
+    {
+      ret = g_variant_new_string ("There's no home like home");
+    }
+
+  return ret;
+}
+
+static gboolean
+handle_set_property (GDBusConnection  *connection,
+                     GObject          *object,
+                     const gchar      *sender,
+                     const gchar      *object_path,
+                     const gchar      *property_name,
+                     GVariant         *value,
+                     GError          **error)
+{
+  if (g_strcmp0 (property_name, "Title") == 0)
+    {
+      g_free (_global_title);
+      _global_title = g_variant_dup_string (value, NULL);
+    }
+  else if (g_strcmp0 (property_name, "ReadingAlwaysThrowsError") == 0)
+    {
+      /* do nothing - they can't read it after all! */
+    }
+  else if (g_strcmp0 (property_name, "WritingAlwaysThrowsError") == 0)
+    {
+      g_set_error (error,
+                   G_DBUS_ERROR,
+                   G_DBUS_ERROR_FAILED,
+                   "Hello AGAIN %s. I thought I said writing this property "
+                   "always results in an error. kthxbye",
+                   sender);
+    }
+
+  return *error == NULL;
+}
+
+
+/* for now */
+static const GDBusInterfaceVTable interface_vtable =
+{
+  handle_method_call,
+  handle_get_property,
+  handle_set_property
 };
 
 /* ---------------------------------------------------------------------------------------------------- */
@@ -91,7 +168,7 @@ on_name_acquired (GDBusConnection *connection,
                                                        "/org/gtk/GDBus/TestObject",
                                                        "org.gtk.GDBus.TestInterface",
                                                        &introspection_data->interfaces[0],
-                                                       &test_interface_vtable,
+                                                       &interface_vtable,
                                                        NULL,
                                                        NULL,
                                                        NULL);
@@ -137,4 +214,3 @@ main (int argc, char *argv[])
 
   return 0;
 }
-

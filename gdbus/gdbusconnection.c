@@ -489,13 +489,15 @@ g_dbus_connection_get_is_private (GDBusConnection *connection)
              " destination:  %s\n"                      \
              " path:         %s\n"                      \
              " interface:    %s\n"                      \
-             " member:       %s\n",                     \
+             " member:       %s\n"                      \
+             " signature:    %s\n",                     \
              message_type,                              \
              dbus_message_get_sender (message),         \
              dbus_message_get_destination (message),    \
              dbus_message_get_path (message),           \
              dbus_message_get_interface (message),      \
-             dbus_message_get_member (message));        \
+             dbus_message_get_member (message),         \
+             dbus_message_get_signature (message));     \
   } while (FALSE)
 
 static void
@@ -2060,6 +2062,445 @@ exported_interface_free (ExportedInterface *ei)
   g_free (ei);
 }
 
+/* ---------------------------------------------------------------------------------------------------- */
+
+typedef struct
+{
+  GDBusConnection *connection;
+  DBusMessage *message;
+  GObject *object;
+  const char *property_name;
+  const GDBusInterfaceVTable *vtable;
+  const GDBusPropertyInfo *property_info;
+} PropertyData;
+
+static void
+property_data_free (PropertyData *data)
+{
+  if (data->object != NULL)
+    g_object_unref (data->object);
+  g_object_unref (data->connection);
+  dbus_message_unref (data->message);
+  g_free (data);
+}
+
+/* called in thread where object was registered - no locks held */
+static gboolean
+invoke_get_property_in_idle_cb (gpointer _data)
+{
+  PropertyData *data = _data;
+  GVariant *value;
+  GError *error;
+  DBusMessage *reply;
+
+  error = NULL;
+  value = data->vtable->get_property (data->connection,
+                                      data->object,
+                                      dbus_message_get_sender (data->message),
+                                      dbus_message_get_path (data->message),
+                                      data->property_name,
+                                      &error);
+
+  if (value != NULL)
+    {
+      GVariant *packed;
+
+      g_assert_no_error (error);
+
+      packed = g_variant_new ("(v)", value);
+
+      reply = dbus_message_new_method_return (data->message);
+      if (!_g_dbus_gvariant_to_dbus_1 (reply,
+                                       packed,
+                                       &error))
+        {
+          g_warning ("Error serializing to DBusMessage: %s", error->message);
+          g_error_free (error);
+          dbus_message_unref (reply);
+          g_variant_unref (value);
+          g_variant_unref (packed);
+          goto out;
+        }
+
+      _g_dbus_connection_send_dbus_1_message (data->connection, reply);
+
+      g_variant_unref (value);
+      g_variant_unref (packed);
+    }
+  else
+    {
+      gchar *dbus_error_name;
+
+      g_assert (error != NULL);
+
+      dbus_error_name = g_dbus_error_encode_gerror (error);
+      reply = dbus_message_new_error (data->message,
+                                      dbus_error_name,
+                                      error->message);
+
+      _g_dbus_connection_send_dbus_1_message (data->connection, reply);
+
+      g_free (dbus_error_name);
+      g_error_free (error);
+      dbus_message_unref (reply);
+    }
+
+ out:
+  return FALSE;
+}
+
+/* called in thread where object was registered - no locks held */
+static gboolean
+invoke_set_property_in_idle_cb (gpointer _data)
+{
+  PropertyData *data = _data;
+  GError *error;
+  DBusMessage *reply;
+  GVariant *parameters;
+  GVariant *value;
+
+  error = NULL;
+  parameters = NULL;
+  value = NULL;
+
+  parameters = _g_dbus_dbus_1_to_gvariant (data->message, &error);
+  if (parameters == NULL)
+    {
+      gchar *dbus_error_name;
+      g_assert (error != NULL);
+      dbus_error_name = g_dbus_error_encode_gerror (error);
+      reply = dbus_message_new_error (data->message,
+                                      dbus_error_name,
+                                      error->message);
+      g_free (dbus_error_name);
+      g_error_free (error);
+      goto out;
+    }
+
+  g_variant_get (parameters,
+                 "(ssv)",
+                 NULL,
+                 NULL,
+                 &value);
+
+  /* Fail with org.freedesktop.DBus.Error.InvalidArgs if the type
+   * of the given value is wrong
+   */
+  if (g_strcmp0 (g_variant_get_type_string (value), data->property_info->signature) != 0)
+    {
+      reply = dbus_message_new_error (data->message,
+                                      "org.freedesktop.DBus.Error.InvalidArgs",
+                                      _("Type of property to set is incorrect"));
+      goto out;
+    }
+
+  if (!data->vtable->set_property (data->connection,
+                                   data->object,
+                                   dbus_message_get_sender (data->message),
+                                   dbus_message_get_path (data->message),
+                                   data->property_name,
+                                   value,
+                                   &error))
+    {
+      gchar *dbus_error_name;
+      g_assert (error != NULL);
+      dbus_error_name = g_dbus_error_encode_gerror (error);
+      reply = dbus_message_new_error (data->message,
+                                      dbus_error_name,
+                                      error->message);
+      g_free (dbus_error_name);
+      g_error_free (error);
+    }
+  else
+    {
+      reply = dbus_message_new_method_return (data->message);
+    }
+
+ out:
+  g_assert (reply != NULL);
+  _g_dbus_connection_send_dbus_1_message (data->connection, reply);
+  if (value != NULL)
+    g_variant_unref (value);
+  if (parameters != NULL)
+    g_variant_unref (parameters);
+  dbus_message_unref (reply);
+  return FALSE;
+}
+
+/* called with lock held */
+static DBusHandlerResult
+handle_getset_property (DBusConnection *connection,
+                        ExportedObject *eo,
+                        DBusMessage    *message)
+{
+  DBusHandlerResult ret;
+  const char *interface_name;
+  const char *property_name;
+  ExportedInterface *ei;
+  const GDBusPropertyInfo *property_info;
+  GSource *idle_source;
+  PropertyData *property_data;
+  gboolean is_get;
+  DBusMessage *reply;
+
+  ret = DBUS_HANDLER_RESULT_NOT_YET_HANDLED;
+
+  if (!dbus_message_get_args (message,
+                              NULL,
+                              DBUS_TYPE_STRING, &interface_name,
+                              DBUS_TYPE_STRING, &property_name,
+                              DBUS_TYPE_INVALID))
+    goto out;
+
+  is_get = FALSE;
+  if (g_strcmp0 (dbus_message_get_member (message), "Get") == 0)
+    is_get = TRUE;
+
+  /* Fail with org.freedesktop.DBus.Error.InvalidArgs if there is
+   * no such interface
+   */
+  ei = g_hash_table_lookup (eo->map_if_name_to_ei, interface_name);
+  if (ei == NULL)
+    {
+      DBusMessage *reply;
+      reply = dbus_message_new_error (message,
+                                      "org.freedesktop.DBus.Error.InvalidArgs",
+                                      _("No such interface"));
+      _g_dbus_connection_send_dbus_1_message (eo->connection, reply);
+      dbus_message_unref (reply);
+      ret = DBUS_HANDLER_RESULT_HANDLED;
+      goto out;
+    }
+
+  if (is_get)
+    {
+      if (ei->vtable == NULL || (ei->vtable->get_property == NULL))
+        goto out;
+    }
+  else
+    {
+      if (ei->vtable == NULL || ei->vtable->set_property == NULL)
+        goto out;
+    }
+
+  /* Check that the property exists - if not fail with org.freedesktop.DBus.Error.InvalidArgs
+   */
+  property_info = NULL;
+
+  /* TODO: the cost of this is O(n) - it might be worth caching the result */
+  property_info = g_dbus_interface_info_lookup_property (ei->introspection_data,
+                                                         property_name);
+  if (property_info == NULL)
+    {
+      reply = dbus_message_new_error (message,
+                                      "org.freedesktop.DBus.Error.InvalidArgs",
+                                      _("No such property"));
+      _g_dbus_connection_send_dbus_1_message (eo->connection, reply);
+      dbus_message_unref (reply);
+      ret = DBUS_HANDLER_RESULT_HANDLED;
+      goto out;
+    }
+
+  if (is_get && !(property_info->flags & G_DBUS_PROPERTY_INFO_FLAGS_READABLE))
+    {
+      reply = dbus_message_new_error (message,
+                                      "org.freedesktop.DBus.Error.InvalidArgs",
+                                      _("Property is not readable"));
+      _g_dbus_connection_send_dbus_1_message (eo->connection, reply);
+      dbus_message_unref (reply);
+      ret = DBUS_HANDLER_RESULT_HANDLED;
+      goto out;
+    }
+  else if (!is_get && !(property_info->flags & G_DBUS_PROPERTY_INFO_FLAGS_WRITABLE))
+    {
+      reply = dbus_message_new_error (message,
+                                      "org.freedesktop.DBus.Error.InvalidArgs",
+                                      _("Property is not writable"));
+      _g_dbus_connection_send_dbus_1_message (eo->connection, reply);
+      dbus_message_unref (reply);
+      ret = DBUS_HANDLER_RESULT_HANDLED;
+      goto out;
+    }
+
+  /* ok, got the property info - call user in an idle handler */
+  property_data = g_new0 (PropertyData, 1);
+  property_data->connection = g_object_ref (eo->connection);
+  property_data->message = dbus_message_ref (message);
+  property_data->object = ei->object != NULL ? g_object_ref (ei->object) : NULL;
+  property_data->property_name = property_name;
+  property_data->vtable = ei->vtable;
+  property_data->property_info = property_info;
+
+  idle_source = g_idle_source_new ();
+  g_source_set_priority (idle_source, G_PRIORITY_DEFAULT);
+  g_source_set_callback (idle_source,
+                         is_get ? invoke_get_property_in_idle_cb : invoke_set_property_in_idle_cb,
+                         property_data,
+                         (GDestroyNotify) property_data_free);
+  g_source_attach (idle_source, ei->context);
+  g_source_unref (idle_source);
+
+  ret = DBUS_HANDLER_RESULT_HANDLED;
+
+ out:
+  return ret;
+}
+
+/* ---------------------------------------------------------------------------------------------------- */
+
+typedef struct
+{
+  GDBusConnection *connection;
+  DBusMessage *message;
+  GObject *object;
+  const GDBusInterfaceVTable *vtable;
+  const GDBusInterfaceInfo *interface_info;
+} PropertyGetAllData;
+
+static void
+property_get_all_data_free (PropertyData *data)
+{
+  if (data->object != NULL)
+    g_object_unref (data->object);
+  g_object_unref (data->connection);
+  dbus_message_unref (data->message);
+  g_free (data);
+}
+
+/* called in thread where object was registered - no locks held */
+static gboolean
+invoke_get_all_properties_in_idle_cb (gpointer _data)
+{
+  PropertyGetAllData *data = _data;
+  GVariantBuilder *builder;
+  GVariant *packed;
+  GVariant *result;
+  GError *error;
+  DBusMessage *reply;
+  guint n;
+
+  error = NULL;
+
+  /* TODO: Right now we never fail this call - we just omit values if
+   *       a get_property() call is failing.
+   *
+   *       We could fail the whole call if just a single get_property() call
+   *       returns an error. We need clarification in the dbus spec for this.
+   */
+  builder = g_variant_builder_new (G_VARIANT_TYPE_CLASS_ARRAY, NULL);
+  for (n = 0; n < data->interface_info->num_properties; n++)
+    {
+      const GDBusPropertyInfo *property_info = data->interface_info->properties + n;
+      GVariant *value;
+
+      if (!(property_info->flags & G_DBUS_PROPERTY_INFO_FLAGS_READABLE))
+        continue;
+
+      value = data->vtable->get_property (data->connection,
+                                          data->object,
+                                          dbus_message_get_sender (data->message),
+                                          dbus_message_get_path (data->message),
+                                          property_info->name,
+                                          NULL);
+      if (value == NULL)
+        continue;
+
+      g_variant_builder_add (builder,
+                             "{sv}",
+                             property_info->name,
+                             value);
+      g_variant_unref (value);
+    }
+  result = g_variant_builder_end (builder);
+
+  builder = g_variant_builder_new (G_VARIANT_TYPE_CLASS_TUPLE, NULL);
+  g_variant_builder_add_value (builder, result); /* steals result since result is floating */
+  packed = g_variant_builder_end (builder);
+
+  reply = dbus_message_new_method_return (data->message);
+  if (!_g_dbus_gvariant_to_dbus_1 (reply,
+                                   packed,
+                                   &error))
+    {
+      g_warning ("Error serializing to DBusMessage: %s", error->message);
+      g_error_free (error);
+      dbus_message_unref (reply);
+      g_variant_unref (packed);
+      goto out;
+    }
+  g_variant_unref (packed);
+  _g_dbus_connection_send_dbus_1_message (data->connection, reply);
+  dbus_message_unref (reply);
+
+ out:
+  return FALSE;
+}
+
+/* called with lock held */
+static DBusHandlerResult
+handle_get_all_properties (DBusConnection *connection,
+                           ExportedObject *eo,
+                           DBusMessage    *message)
+{
+  DBusHandlerResult ret;
+  const char *interface_name;
+  ExportedInterface *ei;
+  GSource *idle_source;
+  PropertyGetAllData *property_get_all_data;
+
+  ret = DBUS_HANDLER_RESULT_NOT_YET_HANDLED;
+
+  if (!dbus_message_get_args (message,
+                              NULL,
+                              DBUS_TYPE_STRING, &interface_name,
+                              DBUS_TYPE_INVALID))
+    goto out;
+
+  /* Fail with org.freedesktop.DBus.Error.InvalidArgs if there is
+   * no such interface
+   */
+  ei = g_hash_table_lookup (eo->map_if_name_to_ei, interface_name);
+  if (ei == NULL)
+    {
+      DBusMessage *reply;
+      reply = dbus_message_new_error (message,
+                                      "org.freedesktop.DBus.Error.InvalidArgs",
+                                      _("No such interface"));
+      _g_dbus_connection_send_dbus_1_message (eo->connection, reply);
+      dbus_message_unref (reply);
+      ret = DBUS_HANDLER_RESULT_HANDLED;
+      goto out;
+    }
+
+  if (ei->vtable == NULL || (ei->vtable->get_property == NULL))
+    goto out;
+
+  /* ok, got the property info - call user in an idle handler */
+  property_get_all_data = g_new0 (PropertyGetAllData, 1);
+  property_get_all_data->connection = g_object_ref (eo->connection);
+  property_get_all_data->message = dbus_message_ref (message);
+  property_get_all_data->object = ei->object != NULL ? g_object_ref (ei->object) : NULL;
+  property_get_all_data->vtable = ei->vtable;
+  property_get_all_data->interface_info = ei->introspection_data;
+
+  idle_source = g_idle_source_new ();
+  g_source_set_priority (idle_source, G_PRIORITY_DEFAULT);
+  g_source_set_callback (idle_source,
+                         invoke_get_all_properties_in_idle_cb,
+                         property_get_all_data,
+                         (GDestroyNotify) property_get_all_data_free);
+  g_source_attach (idle_source, ei->context);
+  g_source_unref (idle_source);
+
+  ret = DBUS_HANDLER_RESULT_HANDLED;
+
+ out:
+  return ret;
+}
+
+/* ---------------------------------------------------------------------------------------------------- */
+
+/* called with lock held */
 static DBusHandlerResult
 handle_introspect (DBusConnection *connection,
                    ExportedObject *eo,
@@ -2112,16 +2553,9 @@ handle_introspect (DBusConnection *connection,
   g_hash_table_iter_init (&hash_iter, eo->map_if_name_to_ei);
   while (g_hash_table_iter_next (&hash_iter, NULL, (gpointer) &ei))
     {
-      if (ei->introspection_data != NULL)
-        {
-          g_dbus_interface_info_generate_xml (ei->introspection_data,
-                                              2,
-                                              s);
-        }
-      else
-        {
-          g_string_append_printf (s, "  <interface name=\"%s\"/>\n", ei->interface_name);
-        }
+      g_dbus_interface_info_generate_xml (ei->introspection_data,
+                                          2,
+                                          s);
     }
 
   /* finally include nodes registered below us */
@@ -2148,7 +2582,7 @@ handle_introspect (DBusConnection *connection,
   return DBUS_HANDLER_RESULT_HANDLED;
 }
 
-/* called in thread where object was registered */
+/* called in thread where object was registered - no locks held */
 static gboolean
 invoke_method_in_idle_cb (gpointer user_data)
 {
@@ -2198,6 +2632,7 @@ dbus_1_obj_vtable_message_func (DBusConnection *connection,
           GVariant *parameters;
           GError *error;
           const GDBusMethodInfo *method_info;
+          DBusMessage *reply;
 
           error = NULL;
           parameters = _g_dbus_dbus_1_to_gvariant (message, &error);
@@ -2212,38 +2647,34 @@ dbus_1_obj_vtable_message_func (DBusConnection *connection,
           if (ei->vtable == NULL || ei->vtable->handle_method_call == NULL)
             goto out;
 
-          /* if we have introspection data, check that the incoming args are of the right type - if
-           * they are not, then fail with %G_DBUS_ERROR_INVALID_ARGS
+          /* Check that the incoming args are of the right type - if they are not, then fail
+           * with %G_DBUS_ERROR_INVALID_ARGS
            */
           method_info = NULL;
-          if (ei->introspection_data != NULL)
+
+          /* TODO: the cost of this is O(n) - it might be worth caching the result */
+          method_info = g_dbus_interface_info_lookup_method (ei->introspection_data,
+                                                             dbus_message_get_member (message));
+          if (method_info == NULL)
             {
-              DBusMessage *reply;
+              reply = dbus_message_new_error (message,
+                                              "org.freedesktop.DBus.Error.UnknownMethod",
+                                              _("No such method"));
+              _g_dbus_connection_send_dbus_1_message (eo->connection, reply);
+              dbus_message_unref (reply);
+              result = DBUS_HANDLER_RESULT_HANDLED;
+              goto out;
+            }
 
-              /* TODO: the cost of this is O(n) - it might be worth caching the result */
-              method_info = g_dbus_interface_info_lookup_method (ei->introspection_data,
-                                                                 dbus_message_get_member (message));
-              if (method_info == NULL)
-                {
-                  reply = dbus_message_new_error (message,
-                                                  "org.freedesktop.DBus.Error.UnknownMethod",
-                                                  _("No such method"));
-                  _g_dbus_connection_send_dbus_1_message (eo->connection, reply);
-                  dbus_message_unref (reply);
-                  result = DBUS_HANDLER_RESULT_HANDLED;
-                  goto out;
-                }
-
-              if (!dbus_message_has_signature (message, method_info->in_signature))
-                {
-                  reply = dbus_message_new_error (message,
-                                                  "org.freedesktop.DBus.Error.InvalidArgs",
-                                                  _("Signature of message does not match what is expected"));
-                  _g_dbus_connection_send_dbus_1_message (eo->connection, reply);
-                  dbus_message_unref (reply);
-                  result = DBUS_HANDLER_RESULT_HANDLED;
-                  goto out;
-                }
+          if (!dbus_message_has_signature (message, method_info->in_signature))
+            {
+              reply = dbus_message_new_error (message,
+                                              "org.freedesktop.DBus.Error.InvalidArgs",
+                                              _("Signature of message does not match what is expected"));
+              _g_dbus_connection_send_dbus_1_message (eo->connection, reply);
+              dbus_message_unref (reply);
+              result = DBUS_HANDLER_RESULT_HANDLED;
+              goto out;
             }
 
           invocation = g_dbus_method_invocation_new (dbus_message_get_sender (message),
@@ -2281,9 +2712,34 @@ dbus_1_obj_vtable_message_func (DBusConnection *connection,
 
   if (dbus_message_is_method_call (message,
                                    "org.freedesktop.DBus.Introspectable",
-                                   "Introspect"))
+                                   "Introspect") &&
+      g_strcmp0 (dbus_message_get_signature (message), "") == 0)
     {
       result = handle_introspect (connection, eo, message);
+      goto out;
+    }
+  else if (dbus_message_is_method_call (message,
+                                        "org.freedesktop.DBus.Properties",
+                                        "Get") &&
+           g_strcmp0 (dbus_message_get_signature (message), "ss") == 0)
+    {
+      result = handle_getset_property (connection, eo, message);
+      goto out;
+    }
+  else if (dbus_message_is_method_call (message,
+                                        "org.freedesktop.DBus.Properties",
+                                        "Set") &&
+           g_strcmp0 (dbus_message_get_signature (message), "ssv") == 0)
+    {
+      result = handle_getset_property (connection, eo, message);
+      goto out;
+    }
+  else if (dbus_message_is_method_call (message,
+                                        "org.freedesktop.DBus.Properties",
+                                        "GetAll") &&
+           g_strcmp0 (dbus_message_get_signature (message), "s") == 0)
+    {
+      result = handle_get_all_properties (connection, eo, message);
       goto out;
     }
 
@@ -2308,7 +2764,7 @@ static const DBusObjectPathVTable dbus_1_obj_vtable =
  * @object: The object to register or %NULL.
  * @object_path: The object path to register @object at.
  * @interface_name: The D-Bus interface to register.
- * @introspection_data: Introspection data for the interface or %NULL.
+ * @introspection_data: Introspection data for the interface.
  * @vtable: A #GDBusInterfaceVTable to call into or %NULL.
  * @on_unregistration_func: Function to call when @object is unregistered or %NULL.
  * @unregistration_data: Data to pass to @on_unregistration_func.
@@ -2320,8 +2776,15 @@ static const DBusObjectPathVTable dbus_1_obj_vtable =
  * happen in the <link linkend="g-main-context-push-thread-default">thread-default main
  * loop</link> of the thread you are calling this method from.
  *
- * If an existing object with is already registered at @object_path and @interface_name or
- * another binding is already exporting objects at @object_path, then @error is set to
+ * Note that all #GVariant values passed to functions in @vtable is of
+ * the correct type - if a caller passed incorrect values, the
+ * %G_DBUS_ERROR_INVALID_ARGS is returned. It is considered an
+ * error if the get_property() function in @vtable returns a
+ * #GVariant of incorrect type.
+ *
+ * If an existing object with is already registered at @object_path
+ * and @interface_name or another binding is already exporting objects
+ * at @object_path, then @error is set to
  * #G_DBUS_ERROR_OBJECT_PATH_IN_USE.
  *
  * This function will take a weak reference to @object if it is not
@@ -2350,6 +2813,7 @@ g_dbus_connection_register_object (GDBusConnection            *connection,
   g_return_val_if_fail (!g_dbus_connection_get_is_disconnected (connection), 0);
   g_return_val_if_fail (interface_name != NULL, 0);
   g_return_val_if_fail (object_path != NULL, 0);
+  g_return_val_if_fail (introspection_data != NULL, 0);
 
   ret = 0;
 

@@ -113,19 +113,40 @@ void             g_dbus_connection_set_exit_on_disconnect     (GDBusConnection  
 /**
  * GDBusInterfaceVTable:
  * @handle_method_call: Function for handling incoming method calls.
+ * @get_property: Function for getting a property.
+ * @set_property: Function for setting a property.
  *
- * Virtual table for handling incoming method calls for a D-Bus
+ * Virtual table for handling properties and method calls for a D-Bus
  * interface.
+ *
+ * If you want to handle getting/setting D-Bus properties asynchronously, simply
+ * register an object with the <literal>org.freedesktop.DBus.Properties</literal>
+ * using g_dbus_connection_register_object().
  */
 struct _GDBusInterfaceVTable
 {
-  void (*handle_method_call) (GDBusConnection       *connection,
-                              GObject               *object,
-                              const gchar           *sender,
-                              const gchar           *object_path,
-                              const gchar           *method_name,
-                              GVariant              *parameters,
-                              GDBusMethodInvocation *invocation);
+  void      (*handle_method_call)  (GDBusConnection       *connection,
+                                    GObject               *object,
+                                    const gchar           *sender,
+                                    const gchar           *object_path,
+                                    const gchar           *method_name,
+                                    GVariant              *parameters,
+                                    GDBusMethodInvocation *invocation);
+
+  GVariant *(*get_property)        (GDBusConnection       *connection,
+                                    GObject               *object,
+                                    const gchar           *sender,
+                                    const gchar           *object_path,
+                                    const gchar           *property_name,
+                                    GError               **error);
+
+  gboolean  (*set_property)        (GDBusConnection       *connection,
+                                    GObject               *object,
+                                    const gchar           *sender,
+                                    const gchar           *object_path,
+                                    const gchar           *property_name,
+                                    GVariant              *value,
+                                    GError               **error);
 
   /*< private >*/
   /* Padding for future expansion */
