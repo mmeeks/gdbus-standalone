@@ -140,9 +140,9 @@ static const GDBusInterfaceVTable bar_interface_vtable = {0};
 /* ---------------------------------------------------------------------------------------------------- */
 
 static void
-introspect_callback (GDBusConnection *connection,
-                     GAsyncResult    *res,
-                     gpointer         user_data)
+introspect_callback (GDBusProxy   *proxy,
+                     GAsyncResult *res,
+                     gpointer      user_data)
 {
   const gchar *s;
   gchar **xml_data = user_data;
@@ -150,9 +150,9 @@ introspect_callback (GDBusConnection *connection,
   GError *error;
 
   error = NULL;
-  result = g_dbus_connection_invoke_method_with_reply_finish (connection,
-                                                              res,
-                                                              &error);
+  result = g_dbus_proxy_invoke_method_with_reply_finish (proxy,
+                                                         res,
+                                                         &error);
   g_assert_no_error (error);
   g_assert (result != NULL);
   g_variant_get (result, "(s)", &s);
@@ -187,16 +187,13 @@ get_nodes_at (GDBusConnection  *c,
 
   /* do this async to avoid libdbus-1 deadlocks */
   xml_data = NULL;
-  g_dbus_connection_invoke_method_with_reply (g_dbus_proxy_get_connection (proxy),
-                                              g_dbus_proxy_get_unique_bus_name (proxy),
-                                              g_dbus_proxy_get_object_path (proxy),
-                                              "org.freedesktop.DBus.Introspectable",
-                                              "Introspect",
-                                              NULL,
-                                              -1,
-                                              NULL,
-                                              (GAsyncReadyCallback) introspect_callback,
-                                              &xml_data);
+  g_dbus_proxy_invoke_method_with_reply (proxy,
+                                         "Introspect",
+                                         NULL,
+                                         -1,
+                                         NULL,
+                                         (GAsyncReadyCallback) introspect_callback,
+                                         &xml_data);
   g_main_loop_run (loop);
   g_assert (xml_data != NULL);
 

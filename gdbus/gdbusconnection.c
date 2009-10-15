@@ -3023,9 +3023,13 @@ g_dbus_connection_emit_signal (GDBusConnection    *connection,
  * @parameters: A #GVariant tuple with parameters for the method or %NULL if not passing parameters.
  * @error: Return location for error or %NULL.
  *
- * Invokes a method without waiting for a reply.
+ * Invokes the @method_name method on the @interface_name D-Bus
+ * interface on the remote object at @object_path owned by @bus_name
+ * without waiting for a reply.
  *
- * This can only fail if @parameters is not compatible with the D-Bus protocol.
+ * This function will only return an error if @parameters contains a
+ * value not compatible with the D-Bus protocol in which case the
+ * %G_DBUS_ERROR_CONVERSION_FAILED error is returned.
  *
  * Returns: %TRUE unless @error is set.
  */

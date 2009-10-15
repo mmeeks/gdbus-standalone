@@ -246,7 +246,6 @@ test_delivery_in_thread (void)
 
 /* ---------------------------------------------------------------------------------------------------- */
 
-#if 0
 typedef struct {
   GDBusProxy *proxy;
   gint msec;
@@ -266,16 +265,16 @@ sleep_cb (GDBusProxy   *proxy,
 {
   SyncThreadData *data = user_data;
   GError *error;
-  gboolean ret;
+  GVariant *result;
 
   error = NULL;
-  ret = g_dbus_proxy_invoke_method_finish (proxy,
-                                           "",
-                                           res,
-                                           &error,
-                                           G_TYPE_INVALID);
+  result = g_dbus_proxy_invoke_method_with_reply_finish (proxy,
+                                                         res,
+                                                         &error);
   g_assert_no_error (error);
-  g_assert (ret);
+  g_assert (result != NULL);
+  g_assert_cmpstr (g_variant_get_type_string (result), ==, "()");
+  g_variant_unref (result);
 
   g_assert (data->thread == g_thread_self ());
 
@@ -302,33 +301,34 @@ test_sleep_in_thread_func (gpointer _data)
       if (data->async)
         {
           //g_debug ("invoking async (%p)", g_thread_self ());
-          g_dbus_proxy_invoke_method (data->proxy,
-                                      "Sleep",
-                                      "i",
-                                      -1, NULL,
-                                      (GAsyncReadyCallback) sleep_cb,
-                                      data,
-                                      G_TYPE_INT, data->msec,
-                                      G_TYPE_INVALID);
+          g_dbus_proxy_invoke_method_with_reply (data->proxy,
+                                                 "Sleep",
+                                                 g_variant_new ("(i)", data->msec),
+                                                 -1,
+                                                 NULL,
+                                                 (GAsyncReadyCallback) sleep_cb,
+                                                 data);
           g_main_loop_run (data->thread_loop);
           //g_debug ("done invoking async (%p)", g_thread_self ());
         }
       else
         {
           GError *error;
-          gboolean ret;
+          GVariant *result;
+
           error = NULL;
           //g_debug ("invoking sync (%p)", g_thread_self ());
-          ret = g_dbus_proxy_invoke_method_sync (data->proxy,
-                                                 "Sleep",
-                                                 "i", "",
-                                                 -1, NULL, &error,
-                                                 G_TYPE_INT, data->msec,
-                                                 G_TYPE_INVALID,
-                                                 G_TYPE_INVALID);
+          result = g_dbus_proxy_invoke_method_with_reply_sync (data->proxy,
+                                                               "Sleep",
+                                                               g_variant_new ("(i)", data->msec),
+                                                               -1,
+                                                               NULL,
+                                                               &error);
           //g_debug ("done invoking sync (%p)", g_thread_self ());
           g_assert_no_error (error);
-          g_assert (ret);
+          g_assert (result != NULL);
+          g_assert_cmpstr (g_variant_get_type_string (result), ==, "()");
+          g_variant_unref (result);
         }
     }
 
@@ -470,7 +470,6 @@ test_method_calls_in_thread (void)
 
   g_bus_unwatch_proxy (watcher_id);
 }
-#endif
 
 /* ---------------------------------------------------------------------------------------------------- */
 
@@ -514,7 +513,7 @@ main (int   argc,
   g_assert (c != NULL);
 
   g_test_add_func ("/gdbus/delivery-in-thread", test_delivery_in_thread);
-  //g_test_add_func ("/gdbus/method-calls-in-thread", test_method_calls_in_thread);
+  g_test_add_func ("/gdbus/method-calls-in-thread", test_method_calls_in_thread);
 
   ret = g_test_run();
 

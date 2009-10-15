@@ -67,17 +67,14 @@ test_properties (GDBusConnection *connection,
    * is received. Also check that the cache is updated.
    */
   variant2 = g_variant_new_byte (42);
-  result = g_dbus_connection_invoke_method_with_reply_sync (g_dbus_proxy_get_connection (proxy),
-                                                            g_dbus_proxy_get_unique_bus_name (proxy),
-                                                            g_dbus_proxy_get_object_path (proxy),
-                                                            g_dbus_proxy_get_interface_name (proxy),
-                                                            "FrobSetProperty",
-                                                            g_variant_new ("(sv)",
-                                                                           "y",
-                                                                           variant2),
-                                                            -1,
-                                                            NULL,
-                                                            &error);
+  result = g_dbus_proxy_invoke_method_with_reply_sync (proxy,
+                                                       "FrobSetProperty",
+                                                       g_variant_new ("(sv)",
+                                                                      "y",
+                                                                      variant2),
+                                                       -1,
+                                                       NULL,
+                                                       &error);
   g_assert_no_error (error);
   g_assert (result != NULL);
   g_assert_cmpstr (g_variant_get_type_string (result), ==, "()");
@@ -116,18 +113,18 @@ typedef struct
 } TestSignalData;
 
 static void
-test_proxy_signals_on_emit_signal_cb (GDBusConnection   *connection,
-                                      GAsyncResult      *res,
-                                      gpointer           user_data)
+test_proxy_signals_on_emit_signal_cb (GDBusProxy   *proxy,
+                                      GAsyncResult *res,
+                                      gpointer      user_data)
 {
   TestSignalData *data = user_data;
   GError *error;
   GVariant *result;
 
   error = NULL;
-  result = g_dbus_connection_invoke_method_with_reply_finish (connection,
-                                                              res,
-                                                              &error);
+  result = g_dbus_proxy_invoke_method_with_reply_finish (proxy,
+                                                         res,
+                                                         &error);
   g_assert_no_error (error);
   g_assert (result != NULL);
   g_assert_cmpstr (g_variant_get_type_string (result), ==, "()");
@@ -166,17 +163,14 @@ test_signals (GDBusConnection *connection,
                                         G_CALLBACK (test_proxy_signals_on_signal),
                                         s);
 
-  result = g_dbus_connection_invoke_method_with_reply_sync (g_dbus_proxy_get_connection (proxy),
-                                                            g_dbus_proxy_get_unique_bus_name (proxy),
-                                                            g_dbus_proxy_get_object_path (proxy),
-                                                            g_dbus_proxy_get_interface_name (proxy),
-                                                            "EmitSignal",
-                                                            g_variant_new ("(so)",
-                                                                           "Accept the next proposition you hear",
-                                                                           "/some/path"),
-                                                            -1,
-                                                            NULL,
-                                                            &error);
+  result = g_dbus_proxy_invoke_method_with_reply_sync (proxy,
+                                                       "EmitSignal",
+                                                       g_variant_new ("(so)",
+                                                                      "Accept the next proposition you hear",
+                                                                      "/some/path"),
+                                                       -1,
+                                                       NULL,
+                                                       &error);
   g_assert_no_error (error);
   g_assert (result != NULL);
   g_assert_cmpstr (g_variant_get_type_string (result), ==, "()");
@@ -201,18 +195,15 @@ test_signals (GDBusConnection *connection,
                                         "g-dbus-proxy-signal",
                                         G_CALLBACK (test_proxy_signals_on_signal),
                                         s);
-  g_dbus_connection_invoke_method_with_reply (g_dbus_proxy_get_connection (proxy),
-                                              g_dbus_proxy_get_unique_bus_name (proxy),
-                                              g_dbus_proxy_get_object_path (proxy),
-                                              g_dbus_proxy_get_interface_name (proxy),
-                                              "EmitSignal",
-                                              g_variant_new ("(so)",
-                                                             "You will make a great programmer",
-                                                             "/some/other/path"),
-                                              -1,
-                                              NULL,
-                                              (GAsyncReadyCallback) test_proxy_signals_on_emit_signal_cb,
-                                              &data);
+  g_dbus_proxy_invoke_method_with_reply (proxy,
+                                         "EmitSignal",
+                                         g_variant_new ("(so)",
+                                                        "You will make a great programmer",
+                                                        "/some/other/path"),
+                                         -1,
+                                         NULL,
+                                         (GAsyncReadyCallback) test_proxy_signals_on_emit_signal_cb,
+                                         &data);
   g_main_loop_run (data.internal_loop);
   g_main_loop_unref (data.internal_loop);
   g_assert_cmpstr (s->str,

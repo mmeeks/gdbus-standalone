@@ -939,3 +939,280 @@ g_dbus_proxy_get_interface_name (GDBusProxy *proxy)
 }
 
 /* ---------------------------------------------------------------------------------------------------- */
+
+static gboolean
+maybe_split_method_name (const gchar   *method_name,
+                         gchar        **out_interface_name,
+                         const gchar  **out_method_name)
+{
+  gboolean was_split;
+
+  was_split = FALSE;
+  g_assert (out_interface_name != NULL);
+  g_assert (out_method_name != NULL);
+  *out_interface_name = NULL;
+  *out_method_name = NULL;
+
+  if (strchr (method_name, '.') != NULL)
+    {
+      gchar *p;
+      gchar *last_dot;
+
+      p = g_strdup (method_name);
+      last_dot = strrchr (p, '.');
+      *last_dot = '\0';
+
+      *out_interface_name = p;
+      *out_method_name = last_dot + 1;
+
+      was_split = TRUE;
+    }
+
+  return was_split;
+}
+
+
+/**
+ * g_dbus_proxy_invoke_method:
+ * @proxy: A #GDBusProxy.
+ * @method_name: Name of method to invoke.
+ * @parameters: A #GVariant tuple with parameters for the signal or %NULL if not passing parameters.
+ * @error: Return location for error or %NULL.
+ *
+ * Invokes the @method_name method on @proxy without waiting for a
+ * reply.
+ *
+ * If @method_name contains any dots, then @name is split into interface and
+ * method name parts. This allows using @proxy for invoking methods on
+ * other interfaces.
+ *
+ * This function will only return an error if @parameters contains a
+ * value not compatible with the D-Bus protocol in which case the
+ * %G_DBUS_ERROR_CONVERSION_FAILED error is returned.
+ *
+ * Returns: %TRUE unless @error is set.
+ */
+gboolean
+g_dbus_proxy_invoke_method (GDBusProxy   *proxy,
+                            const gchar  *method_name,
+                            GVariant     *parameters,
+                            GError      **error)
+{
+  gboolean ret;
+  gboolean was_split;
+  gchar *split_interface_name;
+  const gchar *split_method_name;
+
+  g_return_val_if_fail (G_IS_DBUS_PROXY (proxy), FALSE);
+  g_return_val_if_fail (method_name != NULL, FALSE);
+
+  was_split = maybe_split_method_name (method_name, &split_interface_name, &split_method_name);
+
+  ret = g_dbus_connection_invoke_method (proxy->priv->connection,
+                                         proxy->priv->unique_bus_name,
+                                         proxy->priv->object_path,
+                                         was_split ? split_interface_name : proxy->priv->interface_name,
+                                         was_split ? split_method_name : method_name,
+                                         parameters,
+                                         error);
+
+  g_free (split_interface_name);
+  return ret;
+}
+
+static void
+reply_cb (GDBusConnection *connection,
+          GAsyncResult    *res,
+          gpointer         user_data)
+{
+  GSimpleAsyncResult *simple = G_SIMPLE_ASYNC_RESULT (user_data);
+  GVariant *value;
+  GError *error;
+
+  error = NULL;
+  value = g_dbus_connection_invoke_method_with_reply_finish (connection,
+                                                             res,
+                                                             &error);
+  if (error != NULL)
+    {
+      g_simple_async_result_set_from_error (simple,
+                                            error);
+      g_error_free (error);
+    }
+  else
+    {
+      g_simple_async_result_set_op_res_gpointer (simple,
+                                                 value,
+                                                 (GDestroyNotify) g_variant_unref);
+    }
+
+  /* no need to complete in idle since the method GDBusConnection already does */
+  g_simple_async_result_complete (simple);
+}
+
+/**
+ * g_dbus_proxy_invoke_method_with_reply:
+ * @proxy: A #GDBusProxy.
+ * @method_name: Name of method to invoke.
+ * @parameters: A #GVariant tuple with parameters for the signal or %NULL if not passing parameters.
+ * @timeout_msec: The timeout in milliseconds or -1 to use the default timeout.
+ * @cancellable: A #GCancellable or %NULL.
+ * @callback: A #GAsyncReadyCallback to call when the request is satisfied.
+ * @user_data: The data to pass to @callback.
+ *
+ * Asynchronously invokes the @method_name method on @proxy.
+ *
+ * If @method_name contains any dots, then @name is split into interface and
+ * method name parts. This allows using @proxy for invoking methods on
+ * other interfaces.
+ *
+ * If the #GDBusConnection associated with @proxy is disconnected then
+ * the operation will fail with %G_DBUS_ERROR_DISCONNECTED. If
+ * @cancellable is canceled, the operation will fail with
+ * %G_DBUS_ERROR_CANCELLED. If @parameters contains a value not
+ * compatible with the D-Bus protocol, the operation fails with
+ * %G_DBUS_ERROR_CONVERSION_FAILED.
+ *
+ * This is an asynchronous method. When the operation is finished, @callback will be invoked
+ * in the <link linkend="g-main-context-push-thread-default">thread-default main loop</link>
+ * of the thread you are calling this method from. You can then call
+ * g_dbus_proxy_invoke_method_with_reply_finish() to get the result of the operation.
+ * See g_dbus_proxy_invoke_method_with_reply_sync() for the
+ * synchronous version of this method.
+ */
+void
+g_dbus_proxy_invoke_method_with_reply (GDBusProxy          *proxy,
+                                       const gchar         *method_name,
+                                       GVariant            *parameters,
+                                       gint                 timeout_msec,
+                                       GCancellable        *cancellable,
+                                       GAsyncReadyCallback  callback,
+                                       gpointer             user_data)
+{
+  GSimpleAsyncResult *simple;
+  gboolean was_split;
+  gchar *split_interface_name;
+  const gchar *split_method_name;
+
+  g_return_if_fail (G_IS_DBUS_PROXY (proxy));
+  g_return_if_fail (method_name != NULL);
+
+  simple = g_simple_async_result_new (G_OBJECT (proxy),
+                                      callback,
+                                      user_data,
+                                      g_dbus_proxy_invoke_method_with_reply);
+
+  was_split = maybe_split_method_name (method_name, &split_interface_name, &split_method_name);
+
+  g_dbus_connection_invoke_method_with_reply (proxy->priv->connection,
+                                              proxy->priv->unique_bus_name,
+                                              proxy->priv->object_path,
+                                              was_split ? split_interface_name : proxy->priv->interface_name,
+                                              was_split ? split_method_name : method_name,
+                                              parameters,
+                                              timeout_msec,
+                                              cancellable,
+                                              (GAsyncReadyCallback) reply_cb,
+                                              simple);
+
+  g_free (split_interface_name);
+}
+
+/**
+ * g_dbus_proxy_invoke_method_with_reply_finish:
+ * @proxy: A #GDBusProxy.
+ * @res: A #GAsyncResult obtained from the #GAsyncReadyCallback passed to g_dbus_proxy_invoke_method_with_reply().
+ * @error: Return location for error or %NULL.
+ *
+ * Finishes an operation started with g_dbus_proxy_invoke_method_with_reply().
+ *
+ * Returns: %NULL if @error is set. Otherwise a #GVariant tuple with
+ * return values. Free with g_variant_unref().
+ */
+GVariant *
+g_dbus_proxy_invoke_method_with_reply_finish (GDBusProxy    *proxy,
+                                              GAsyncResult  *res,
+                                              GError       **error)
+{
+  GSimpleAsyncResult *simple = G_SIMPLE_ASYNC_RESULT (res);
+  GVariant *value;
+
+  g_return_val_if_fail (G_IS_DBUS_PROXY (proxy), NULL);
+  g_return_val_if_fail (res != NULL, NULL);
+
+  g_warn_if_fail (g_simple_async_result_get_source_tag (simple) == g_dbus_proxy_invoke_method_with_reply);
+
+  value = NULL;
+
+  if (g_simple_async_result_propagate_error (simple, error))
+    goto out;
+
+  value = g_simple_async_result_get_op_res_gpointer (simple);
+
+ out:
+  return value;
+}
+
+/**
+ * g_dbus_proxy_invoke_method_with_reply_sync:
+ * @proxy: A #GDBusProxy.
+ * @method_name: Name of method to invoke.
+ * @parameters: A #GVariant tuple with parameters for the signal or %NULL if not passing parameters.
+ * @timeout_msec: The timeout in milliseconds or -1 to use the default timeout.
+ * @cancellable: A #GCancellable or %NULL.
+ * @error: Return location for error or %NULL.
+ *
+ * Synchronously invokes the @method_name method on @proxy.
+ *
+ * If @method_name contains any dots, then @name is split into interface and
+ * method name parts. This allows using @proxy for invoking methods on
+ * other interfaces.
+ *
+ * If the #GDBusConnection associated with @proxy is disconnected then
+ * the operation will fail with %G_DBUS_ERROR_DISCONNECTED. If
+ * @cancellable is canceled, the operation will fail with
+ * %G_DBUS_ERROR_CANCELLED. If @parameters contains a value not
+ * compatible with the D-Bus protocol, the operation fails with
+ * %G_DBUS_ERROR_CONVERSION_FAILED.
+ *
+ * The calling thread is blocked until a reply is received. See
+ * g_dbus_proxy_invoke_method_with_reply() for the asynchronous
+ * version of this method.
+ *
+ * Returns: %NULL if @error is set. Otherwise a #GVariant tuple with
+ * return values. Free with g_variant_unref().
+ */
+GVariant *
+g_dbus_proxy_invoke_method_with_reply_sync (GDBusProxy     *proxy,
+                                            const gchar    *method_name,
+                                            GVariant       *parameters,
+                                            gint            timeout_msec,
+                                            GCancellable   *cancellable,
+                                            GError        **error)
+{
+  GVariant *ret;
+  gboolean was_split;
+  gchar *split_interface_name;
+  const gchar *split_method_name;
+
+  g_return_val_if_fail (G_IS_DBUS_PROXY (proxy), NULL);
+  g_return_val_if_fail (method_name != NULL, NULL);
+
+  was_split = maybe_split_method_name (method_name, &split_interface_name, &split_method_name);
+
+  ret = g_dbus_connection_invoke_method_with_reply_sync (proxy->priv->connection,
+                                                         proxy->priv->unique_bus_name,
+                                                         proxy->priv->object_path,
+                                                         was_split ? split_interface_name : proxy->priv->interface_name,
+                                                         was_split ? split_method_name : method_name,
+                                                         parameters,
+                                                         timeout_msec,
+                                                         cancellable,
+                                                         error);
+
+  g_free (split_interface_name);
+
+  return ret;
+}
+
+/* ---------------------------------------------------------------------------------------------------- */
