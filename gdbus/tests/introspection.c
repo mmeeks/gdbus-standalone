@@ -53,12 +53,12 @@ introspection_on_proxy_appeared (GDBusConnection *connection,
   /**
    * Invoke Introspect(), then parse the output.
    */
-  result = g_dbus_proxy_invoke_method_with_reply_sync (proxy,
-                                                       "org.freedesktop.DBus.Introspectable.Introspect",
-                                                       NULL,
-                                                       -1,
-                                                       NULL,
-                                                       &error);
+  result = g_dbus_proxy_invoke_method_sync (proxy,
+                                            "org.freedesktop.DBus.Introspectable.Introspect",
+                                            NULL,
+                                            -1,
+                                            NULL,
+                                            &error);
   g_assert_no_error (error);
   g_assert (result != NULL);
   g_variant_get (result, "(s)", &xml_data);

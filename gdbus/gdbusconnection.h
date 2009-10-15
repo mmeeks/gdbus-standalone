@@ -181,14 +181,7 @@ gboolean  g_dbus_connection_emit_signal                       (GDBusConnection  
                                                                const gchar        *signal_name,
                                                                GVariant           *parameters,
                                                                GError            **error);
-gboolean  g_dbus_connection_invoke_method                     (GDBusConnection    *connection,
-                                                               const gchar        *bus_name,
-                                                               const gchar        *object_path,
-                                                               const gchar        *interface_name,
-                                                               const gchar        *method_name,
-                                                               GVariant           *parameters,
-                                                               GError            **error);
-void      g_dbus_connection_invoke_method_with_reply          (GDBusConnection    *connection,
+void      g_dbus_connection_invoke_method                     (GDBusConnection    *connection,
                                                                const gchar        *bus_name,
                                                                const gchar        *object_path,
                                                                const gchar        *interface_name,
@@ -198,10 +191,10 @@ void      g_dbus_connection_invoke_method_with_reply          (GDBusConnection  
                                                                GCancellable       *cancellable,
                                                                GAsyncReadyCallback callback,
                                                                gpointer            user_data);
-GVariant *g_dbus_connection_invoke_method_with_reply_finish   (GDBusConnection    *connection,
+GVariant *g_dbus_connection_invoke_method_finish              (GDBusConnection    *connection,
                                                                GAsyncResult       *res,
                                                                GError            **error);
-GVariant *g_dbus_connection_invoke_method_with_reply_sync     (GDBusConnection    *connection,
+GVariant *g_dbus_connection_invoke_method_sync                (GDBusConnection    *connection,
                                                                const gchar        *bus_name,
                                                                const gchar        *object_path,
                                                                const gchar        *interface_name,

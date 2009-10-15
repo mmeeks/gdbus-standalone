@@ -46,12 +46,12 @@ test_methods (GDBusConnection *connection,
 
   /* check that we can invoke a method */
   error = NULL;
-  result = g_dbus_proxy_invoke_method_with_reply_sync (proxy,
-                                                       "HelloWorld",
-                                                       g_variant_new ("(s)", "Hey"),
-                                                       -1,
-                                                       NULL,
-                                                       &error);
+  result = g_dbus_proxy_invoke_method_sync (proxy,
+                                            "HelloWorld",
+                                            g_variant_new ("(s)", "Hey"),
+                                            -1,
+                                            NULL,
+                                            &error);
   g_assert_no_error (error);
   g_assert (result != NULL);
   g_assert_cmpstr (g_variant_get_type_string (result), ==, "(s)");
@@ -60,12 +60,12 @@ test_methods (GDBusConnection *connection,
   g_variant_unref (result);
 
   /* Check that we can completely recover the returned error */
-  result = g_dbus_proxy_invoke_method_with_reply_sync (proxy,
-                                                       "HelloWorld",
-                                                       g_variant_new ("(s)", "Yo"),
-                                                       -1,
-                                                       NULL,
-                                                       &error);
+  result = g_dbus_proxy_invoke_method_sync (proxy,
+                                            "HelloWorld",
+                                            g_variant_new ("(s)", "Yo"),
+                                            -1,
+                                            NULL,
+                                            &error);
   g_assert_error (error, G_DBUS_ERROR, G_DBUS_ERROR_REMOTE_EXCEPTION);
   g_assert (result == NULL);
   dbus_error_name = g_dbus_error_get_dbus_error_name (error);
@@ -77,12 +77,12 @@ test_methods (GDBusConnection *connection,
 
   /* Check that we get a timeout if the method handling is taking longer than timeout */
   error = NULL;
-  result = g_dbus_proxy_invoke_method_with_reply_sync (proxy,
-                                                       "Sleep",
-                                                       g_variant_new ("(i)", 500 /* msec */),
-                                                       100 /* msec */,
-                                                       NULL,
-                                                       &error);
+  result = g_dbus_proxy_invoke_method_sync (proxy,
+                                            "Sleep",
+                                            g_variant_new ("(i)", 500 /* msec */),
+                                            100 /* msec */,
+                                            NULL,
+                                            &error);
   g_assert_error (error, G_DBUS_ERROR, G_DBUS_ERROR_NO_REPLY);
   g_assert (result == NULL);
   g_clear_error (&error);
@@ -126,14 +126,14 @@ test_properties (GDBusConnection *connection,
    * is received. Also check that the cache is updated.
    */
   variant2 = g_variant_new_byte (42);
-  result = g_dbus_proxy_invoke_method_with_reply_sync (proxy,
-                                                       "FrobSetProperty",
-                                                       g_variant_new ("(sv)",
-                                                                      "y",
-                                                                      variant2),
-                                                       -1,
-                                                       NULL,
-                                                       &error);
+  result = g_dbus_proxy_invoke_method_sync (proxy,
+                                            "FrobSetProperty",
+                                            g_variant_new ("(sv)",
+                                                           "y",
+                                                           variant2),
+                                            -1,
+                                            NULL,
+                                            &error);
   g_assert_no_error (error);
   g_assert (result != NULL);
   g_assert_cmpstr (g_variant_get_type_string (result), ==, "()");
@@ -181,9 +181,9 @@ test_proxy_signals_on_emit_signal_cb (GDBusProxy   *proxy,
   GVariant *result;
 
   error = NULL;
-  result = g_dbus_proxy_invoke_method_with_reply_finish (proxy,
-                                                         res,
-                                                         &error);
+  result = g_dbus_proxy_invoke_method_finish (proxy,
+                                              res,
+                                              &error);
   g_assert_no_error (error);
   g_assert (result != NULL);
   g_assert_cmpstr (g_variant_get_type_string (result), ==, "()");
@@ -222,14 +222,14 @@ test_signals (GDBusConnection *connection,
                                         G_CALLBACK (test_proxy_signals_on_signal),
                                         s);
 
-  result = g_dbus_proxy_invoke_method_with_reply_sync (proxy,
-                                                       "EmitSignal",
-                                                       g_variant_new ("(so)",
-                                                                      "Accept the next proposition you hear",
-                                                                      "/some/path"),
-                                                       -1,
-                                                       NULL,
-                                                       &error);
+  result = g_dbus_proxy_invoke_method_sync (proxy,
+                                            "EmitSignal",
+                                            g_variant_new ("(so)",
+                                                           "Accept the next proposition you hear",
+                                                           "/some/path"),
+                                            -1,
+                                            NULL,
+                                            &error);
   g_assert_no_error (error);
   g_assert (result != NULL);
   g_assert_cmpstr (g_variant_get_type_string (result), ==, "()");
@@ -254,15 +254,15 @@ test_signals (GDBusConnection *connection,
                                         "g-dbus-proxy-signal",
                                         G_CALLBACK (test_proxy_signals_on_signal),
                                         s);
-  g_dbus_proxy_invoke_method_with_reply (proxy,
-                                         "EmitSignal",
-                                         g_variant_new ("(so)",
-                                                        "You will make a great programmer",
-                                                        "/some/other/path"),
-                                         -1,
-                                         NULL,
-                                         (GAsyncReadyCallback) test_proxy_signals_on_emit_signal_cb,
-                                         &data);
+  g_dbus_proxy_invoke_method (proxy,
+                              "EmitSignal",
+                              g_variant_new ("(so)",
+                                             "You will make a great programmer",
+                                             "/some/other/path"),
+                              -1,
+                              NULL,
+                              (GAsyncReadyCallback) test_proxy_signals_on_emit_signal_cb,
+                              &data);
   g_main_loop_run (data.internal_loop);
   g_main_loop_unref (data.internal_loop);
   g_assert_cmpstr (s->str,

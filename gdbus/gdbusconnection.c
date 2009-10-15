@@ -3021,76 +3021,10 @@ g_dbus_connection_emit_signal (GDBusConnection    *connection,
  * @interface_name: D-Bus interface to invoke method on.
  * @method_name: The name of the method to invoke.
  * @parameters: A #GVariant tuple with parameters for the method or %NULL if not passing parameters.
- * @error: Return location for error or %NULL.
- *
- * Invokes the @method_name method on the @interface_name D-Bus
- * interface on the remote object at @object_path owned by @bus_name
- * without waiting for a reply.
- *
- * This function will only return an error if @parameters contains a
- * value not compatible with the D-Bus protocol in which case the
- * %G_DBUS_ERROR_CONVERSION_FAILED error is returned.
- *
- * Returns: %TRUE unless @error is set.
- */
-gboolean
-g_dbus_connection_invoke_method (GDBusConnection    *connection,
-                                 const gchar        *bus_name,
-                                 const gchar        *object_path,
-                                 const gchar        *interface_name,
-                                 const gchar        *method_name,
-                                 GVariant           *parameters,
-                                 GError            **error)
-{
-  DBusMessage *message;
-  gboolean ret;
-
-  message = NULL;
-  ret = FALSE;
-
-  g_return_val_if_fail (G_IS_DBUS_CONNECTION (connection), FALSE);
-  g_return_val_if_fail (bus_name != NULL, FALSE);
-  g_return_val_if_fail (object_path != NULL, FALSE);
-  g_return_val_if_fail (interface_name != NULL, FALSE);
-  g_return_val_if_fail (method_name != NULL, FALSE);
-  g_return_val_if_fail ((parameters == NULL) || (g_variant_get_type_class (parameters) == G_VARIANT_TYPE_CLASS_TUPLE), FALSE);
-
-  message = dbus_message_new_method_call (bus_name,
-                                          object_path,
-                                          interface_name,
-                                          method_name);
-  if (message == NULL)
-    _g_dbus_oom ();
-
-  if (!_g_dbus_gvariant_to_dbus_1 (message,
-                                   parameters,
-                                   error))
-    {
-      goto out;
-    }
-
-  _g_dbus_connection_send_dbus_1_message (connection, message);
-
-  ret = TRUE;
-
- out:
-  if (message != NULL)
-    dbus_message_unref (message);
-
-  return ret;
-}
-
-/**
- * g_dbus_connection_invoke_method_with_reply:
- * @connection: A #GDBusConnection.
- * @bus_name: A unique or well-known bus name.
- * @object_path: Path of remote object.
- * @interface_name: D-Bus interface to invoke method on.
- * @method_name: The name of the method to invoke.
- * @parameters: A #GVariant tuple with parameters for the method or %NULL if not passing parameters.
  * @timeout_msec: The timeout in milliseconds or -1 to use the default timeout.
  * @cancellable: A #GCancellable or %NULL.
- * @callback: A #GAsyncReadyCallback to call when the request is satisfied.
+ * @callback: A #GAsyncReadyCallback to call when the request is satisfied or %NULL if you don't
+ * care about the result of the method invocation.
  * @user_data: The data to pass to @callback.
  *
  * Asynchronously invokes the @method_name method on the
@@ -3106,27 +3040,27 @@ g_dbus_connection_invoke_method (GDBusConnection    *connection,
  * This is an asynchronous method. When the operation is finished, @callback will be invoked
  * in the <link linkend="g-main-context-push-thread-default">thread-default main loop</link>
  * of the thread you are calling this method from. You can then call
- * g_dbus_connection_invoke_method_with_reply_finish() to get the result of the operation.
- * See g_dbus_connection_invoke_method_with_reply_sync() for the
- * synchronous version of this method.
+ * g_dbus_connection_invoke_method_finish() to get the result of the operation.
+ * See g_dbus_connection_invoke_method_sync() for the synchronous version of this
+ * function.
  */
 void
-g_dbus_connection_invoke_method_with_reply (GDBusConnection    *connection,
-                                            const gchar        *bus_name,
-                                            const gchar        *object_path,
-                                            const gchar        *interface_name,
-                                            const gchar        *method_name,
-                                            GVariant           *parameters,
-                                            gint                timeout_msec,
-                                            GCancellable       *cancellable,
-                                            GAsyncReadyCallback callback,
-                                            gpointer            user_data)
+g_dbus_connection_invoke_method (GDBusConnection    *connection,
+                                 const gchar        *bus_name,
+                                 const gchar        *object_path,
+                                 const gchar        *interface_name,
+                                 const gchar        *method_name,
+                                 GVariant           *parameters,
+                                 gint                timeout_msec,
+                                 GCancellable       *cancellable,
+                                 GAsyncReadyCallback callback,
+                                 gpointer            user_data)
 {
   DBusMessage *message;
-  GSimpleAsyncResult *simple;
   GError *error;
 
   message = NULL;
+  error = NULL;
 
   g_return_if_fail (G_IS_DBUS_CONNECTION (connection));
   g_return_if_fail (bus_name != NULL);
@@ -3142,28 +3076,48 @@ g_dbus_connection_invoke_method_with_reply (GDBusConnection    *connection,
   if (message == NULL)
     _g_dbus_oom ();
 
-  error = NULL;
-  if (!_g_dbus_gvariant_to_dbus_1 (message,
-                                   parameters,
-                                   &error))
+  if (callback == NULL)
     {
-      simple = g_simple_async_result_new (G_OBJECT (connection),
-                                          callback,
-                                          user_data,
-                                          g_dbus_connection_send_dbus_1_message_with_reply);
-      g_simple_async_result_set_from_error (simple, error);
-      g_error_free (error);
-      g_simple_async_result_complete_in_idle (simple);
-      g_object_unref (simple);
-      goto out;
+      if (_g_dbus_gvariant_to_dbus_1 (message,
+                                      parameters,
+                                      &error))
+        {
+          _g_dbus_connection_send_dbus_1_message (connection, message);
+        }
+      else
+        {
+          g_warning ("Tried invoking a method without caring about the reply, "
+                     "and encountered an error serializing the parameters: %s",
+                     error->message);
+          g_error_free (error);
+        }
     }
+  else
+    {
+      GSimpleAsyncResult *simple;
 
-  g_dbus_connection_send_dbus_1_message_with_reply (connection,
-                                                    message,
-                                                    timeout_msec,
-                                                    cancellable,
-                                                    callback,
-                                                    user_data);
+      if (!_g_dbus_gvariant_to_dbus_1 (message,
+                                       parameters,
+                                       &error))
+        {
+          simple = g_simple_async_result_new (G_OBJECT (connection),
+                                              callback,
+                                              user_data,
+                                              g_dbus_connection_send_dbus_1_message_with_reply);
+          g_simple_async_result_set_from_error (simple, error);
+          g_error_free (error);
+          g_simple_async_result_complete_in_idle (simple);
+          g_object_unref (simple);
+          goto out;
+        }
+
+      g_dbus_connection_send_dbus_1_message_with_reply (connection,
+                                                        message,
+                                                        timeout_msec,
+                                                        cancellable,
+                                                        callback,
+                                                        user_data);
+    }
 
  out:
   if (message != NULL)
@@ -3171,21 +3125,20 @@ g_dbus_connection_invoke_method_with_reply (GDBusConnection    *connection,
 }
 
 /**
- * g_dbus_connection_invoke_method_with_reply_finish:
+ * g_dbus_connection_invoke_method_finish:
  * @connection: A #GDBusConnection.
- * @res: A #GAsyncResult obtained from the #GAsyncReadyCallback passed to g_dbus_connection_invoke_method_with_reply().
+ * @res: A #GAsyncResult obtained from the #GAsyncReadyCallback passed to g_dbus_connection_invoke_method().
  * @error: Return location for error or %NULL.
  *
- * Finishes an operation started with
- * g_dbus_connection_invoke_method_with_reply().
+ * Finishes an operation started with g_dbus_connection_invoke_method().
  *
  * Returns: %NULL if @error is set. Otherwise a #GVariant tuple with
  * return values. Free with g_variant_unref().
  */
 GVariant *
-g_dbus_connection_invoke_method_with_reply_finish (GDBusConnection    *connection,
-                                                   GAsyncResult       *res,
-                                                   GError            **error)
+g_dbus_connection_invoke_method_finish (GDBusConnection    *connection,
+                                        GAsyncResult       *res,
+                                        GError            **error)
 {
   DBusMessage *reply;
   GVariant *result;
@@ -3207,7 +3160,7 @@ g_dbus_connection_invoke_method_with_reply_finish (GDBusConnection    *connectio
 /* ---------------------------------------------------------------------------------------------------- */
 
 /**
- * g_dbus_connection_invoke_method_with_reply_sync:
+ * g_dbus_connection_invoke_method_sync:
  * @connection: A #GDBusConnection.
  * @bus_name: A unique or well-known bus name.
  * @object_path: Path of remote object.
@@ -3229,22 +3182,22 @@ g_dbus_connection_invoke_method_with_reply_finish (GDBusConnection    *connectio
  * fails with %G_DBUS_ERROR_CONVERSION_FAILED.
  *
  * The calling thread is blocked until a reply is received. See
- * g_dbus_connection_invoke_method_with_reply() for the asynchronous
- * version of this method.
+ * g_dbus_connection_invoke_method() for the asynchronous version of
+ * this method.
  *
  * Returns: %NULL if @error is set. Otherwise a #GVariant tuple with
  * return values. Free with g_variant_unref().
  */
 GVariant *
-g_dbus_connection_invoke_method_with_reply_sync (GDBusConnection    *connection,
-                                                 const gchar        *bus_name,
-                                                 const gchar        *object_path,
-                                                 const gchar        *interface_name,
-                                                 const gchar        *method_name,
-                                                 GVariant           *parameters,
-                                                 gint                timeout_msec,
-                                                 GCancellable       *cancellable,
-                                                 GError            **error)
+g_dbus_connection_invoke_method_sync (GDBusConnection    *connection,
+                                      const gchar        *bus_name,
+                                      const gchar        *object_path,
+                                      const gchar        *interface_name,
+                                      const gchar        *method_name,
+                                      GVariant           *parameters,
+                                      gint                timeout_msec,
+                                      GCancellable       *cancellable,
+                                      GError            **error)
 {
   DBusMessage *message;
   DBusMessage *reply;

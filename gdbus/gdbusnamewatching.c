@@ -223,9 +223,9 @@ get_name_owner_cb (GObject      *source_object,
   name_owner = NULL;
   result = NULL;
 
-  result = g_dbus_connection_invoke_method_with_reply_finish (client->connection,
-                                                              res,
-                                                              NULL);
+  result = g_dbus_connection_invoke_method_finish (client->connection,
+                                                   res,
+                                                   NULL);
   if (result != NULL)
     {
       g_variant_get (result, "(s)", &name_owner);
@@ -272,16 +272,16 @@ has_connection (Client *client)
                                                                                    NULL);
 
   /* check owner */
-  g_dbus_connection_invoke_method_with_reply (client->connection,
-                                              "org.freedesktop.DBus",  /* bus name */
-                                              "/org/freedesktop/DBus", /* object path */
-                                              "org.freedesktop.DBus",  /* interface name */
-                                              "GetNameOwner",          /* method name */
-                                              g_variant_new ("(s)", client->name),
-                                              -1,
-                                              NULL,
-                                              (GAsyncReadyCallback) get_name_owner_cb,
-                                              client_ref (client));
+  g_dbus_connection_invoke_method (client->connection,
+                                   "org.freedesktop.DBus",  /* bus name */
+                                   "/org/freedesktop/DBus", /* object path */
+                                   "org.freedesktop.DBus",  /* interface name */
+                                   "GetNameOwner",          /* method name */
+                                   g_variant_new ("(s)", client->name),
+                                   -1,
+                                   NULL,
+                                   (GAsyncReadyCallback) get_name_owner_cb,
+                                   client_ref (client));
 }
 
 

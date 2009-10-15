@@ -52,9 +52,9 @@ msg_cb_expect_success (GDBusConnection *connection,
   GVariant *result;
 
   error = NULL;
-  result = g_dbus_connection_invoke_method_with_reply_finish (connection,
-                                                              res,
-                                                              &error);
+  result = g_dbus_connection_invoke_method_finish (connection,
+                                                   res,
+                                                   &error);
   g_assert_no_error (error);
   g_assert (result != NULL);
   g_variant_unref (result);
@@ -74,9 +74,9 @@ msg_cb_expect_error_cancelled (GDBusConnection *connection,
   GVariant *result;
 
   error = NULL;
-  result = g_dbus_connection_invoke_method_with_reply_finish (connection,
-                                                              res,
-                                                              &error);
+  result = g_dbus_connection_invoke_method_finish (connection,
+                                                   res,
+                                                   &error);
   g_assert_error (error, G_DBUS_ERROR, G_DBUS_ERROR_CANCELLED);
   g_error_free (error);
   g_assert (result == NULL);
@@ -130,16 +130,16 @@ test_delivery_in_thread_func (gpointer _data)
   /**
    * Check that we get a reply to the GetId() method call.
    */
-  g_dbus_connection_invoke_method_with_reply (c,
-                                              "org.freedesktop.DBus",  /* bus_name */
-                                              "/org/freedesktop/DBus", /* object path */
-                                              "org.freedesktop.DBus",  /* interface name */
-                                              "GetId",                 /* method name */
-                                              NULL,
-                                              -1,
-                                              NULL,
-                                              (GAsyncReadyCallback) msg_cb_expect_success,
-                                              &data);
+  g_dbus_connection_invoke_method (c,
+                                   "org.freedesktop.DBus",  /* bus_name */
+                                   "/org/freedesktop/DBus", /* object path */
+                                   "org.freedesktop.DBus",  /* interface name */
+                                   "GetId",                 /* method name */
+                                   NULL,
+                                   -1,
+                                   NULL,
+                                   (GAsyncReadyCallback) msg_cb_expect_success,
+                                   &data);
   g_main_loop_run (thread_loop);
 
   /**
@@ -149,16 +149,16 @@ test_delivery_in_thread_func (gpointer _data)
    */
   ca = g_cancellable_new ();
   g_cancellable_cancel (ca);
-  g_dbus_connection_invoke_method_with_reply (c,
-                                              "org.freedesktop.DBus",  /* bus_name */
-                                              "/org/freedesktop/DBus", /* object path */
-                                              "org.freedesktop.DBus",  /* interface name */
-                                              "GetId",                 /* method name */
-                                              NULL,
-                                              -1,
-                                              ca,
-                                              (GAsyncReadyCallback) msg_cb_expect_error_cancelled,
-                                              &data);
+  g_dbus_connection_invoke_method (c,
+                                   "org.freedesktop.DBus",  /* bus_name */
+                                   "/org/freedesktop/DBus", /* object path */
+                                   "org.freedesktop.DBus",  /* interface name */
+                                   "GetId",                 /* method name */
+                                   NULL,
+                                   -1,
+                                   ca,
+                                   (GAsyncReadyCallback) msg_cb_expect_error_cancelled,
+                                   &data);
   g_main_loop_run (thread_loop);
   g_object_unref (ca);
 
@@ -166,16 +166,16 @@ test_delivery_in_thread_func (gpointer _data)
    * Check that cancellation works when the message is already in flight.
    */
   ca = g_cancellable_new ();
-  g_dbus_connection_invoke_method_with_reply (c,
-                                              "org.freedesktop.DBus",  /* bus_name */
-                                              "/org/freedesktop/DBus", /* object path */
-                                              "org.freedesktop.DBus",  /* interface name */
-                                              "GetId",                 /* method name */
-                                              NULL,
-                                              -1,
-                                              ca,
-                                              (GAsyncReadyCallback) msg_cb_expect_error_cancelled,
-                                              &data);
+  g_dbus_connection_invoke_method (c,
+                                   "org.freedesktop.DBus",  /* bus_name */
+                                   "/org/freedesktop/DBus", /* object path */
+                                   "org.freedesktop.DBus",  /* interface name */
+                                   "GetId",                 /* method name */
+                                   NULL,
+                                   -1,
+                                   ca,
+                                   (GAsyncReadyCallback) msg_cb_expect_error_cancelled,
+                                   &data);
   g_cancellable_cancel (ca);
   g_main_loop_run (thread_loop);
   g_object_unref (ca);
@@ -268,9 +268,9 @@ sleep_cb (GDBusProxy   *proxy,
   GVariant *result;
 
   error = NULL;
-  result = g_dbus_proxy_invoke_method_with_reply_finish (proxy,
-                                                         res,
-                                                         &error);
+  result = g_dbus_proxy_invoke_method_finish (proxy,
+                                              res,
+                                              &error);
   g_assert_no_error (error);
   g_assert (result != NULL);
   g_assert_cmpstr (g_variant_get_type_string (result), ==, "()");
@@ -301,13 +301,13 @@ test_sleep_in_thread_func (gpointer _data)
       if (data->async)
         {
           //g_debug ("invoking async (%p)", g_thread_self ());
-          g_dbus_proxy_invoke_method_with_reply (data->proxy,
-                                                 "Sleep",
-                                                 g_variant_new ("(i)", data->msec),
-                                                 -1,
-                                                 NULL,
-                                                 (GAsyncReadyCallback) sleep_cb,
-                                                 data);
+          g_dbus_proxy_invoke_method (data->proxy,
+                                      "Sleep",
+                                      g_variant_new ("(i)", data->msec),
+                                      -1,
+                                      NULL,
+                                      (GAsyncReadyCallback) sleep_cb,
+                                      data);
           g_main_loop_run (data->thread_loop);
           //g_debug ("done invoking async (%p)", g_thread_self ());
         }
@@ -318,12 +318,12 @@ test_sleep_in_thread_func (gpointer _data)
 
           error = NULL;
           //g_debug ("invoking sync (%p)", g_thread_self ());
-          result = g_dbus_proxy_invoke_method_with_reply_sync (data->proxy,
-                                                               "Sleep",
-                                                               g_variant_new ("(i)", data->msec),
-                                                               -1,
-                                                               NULL,
-                                                               &error);
+          result = g_dbus_proxy_invoke_method_sync (data->proxy,
+                                                    "Sleep",
+                                                    g_variant_new ("(i)", data->msec),
+                                                    -1,
+                                                    NULL,
+                                                    &error);
           //g_debug ("done invoking sync (%p)", g_thread_self ());
           g_assert_no_error (error);
           g_assert (result != NULL);

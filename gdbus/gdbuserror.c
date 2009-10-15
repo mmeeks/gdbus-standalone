@@ -39,11 +39,11 @@
  *
  * Error helper functions for GDBus.
  *
- * All facilities in GDBus (such as g_dbus_connection_invoke_method_with_reply_sync())
+ * All facilities in GDBus (such as g_dbus_connection_invoke_method_sync())
  * that return errors as a result of remote method invocations use #GError. To get
  * the actual D-Bus error name, use g_dbus_error_get_dbus_error_name().
  *
- * In addition, facilities that is used to return errors to a remote
+ * In addition, facilities that are used to return errors to a remote
  * caller also use #GError. See g_dbus_method_invocation_return_error()
  * for discussion about how the D-Bus error name is set.
  *
@@ -442,7 +442,7 @@ g_dbus_error_unregister_error (GQuark       error_domain,
  * Gets the D-Bus error name used for @error, if any.
  *
  * This function is guaranteed to return a D-Bus error name for all #GError<!-- -->s returned from
- * functions handling remote method calls (e.g. g_dbus_connection_invoke_method_with_reply_finish())
+ * functions handling remote method calls (e.g. g_dbus_connection_invoke_method_finish())
  * unless g_dbus_error_strip() has been used on @error.
  *
  * Returns: An allocated string or %NULL if the D-Bus error name could not be found. Free with g_free().
