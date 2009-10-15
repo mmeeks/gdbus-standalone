@@ -30,6 +30,65 @@
 static GMainLoop *loop = NULL;
 
 /* ---------------------------------------------------------------------------------------------------- */
+/* Test that the method aspects of GDBusProxy works */
+/* ---------------------------------------------------------------------------------------------------- */
+
+static void
+test_methods (GDBusConnection *connection,
+              const gchar     *name,
+              const gchar     *name_owner,
+              GDBusProxy      *proxy)
+{
+  GVariant *result;
+  GError *error;
+  const gchar *str;
+  gchar *dbus_error_name;
+
+  /* check that we can invoke a method */
+  error = NULL;
+  result = g_dbus_proxy_invoke_method_with_reply_sync (proxy,
+                                                       "HelloWorld",
+                                                       g_variant_new ("(s)", "Hey"),
+                                                       -1,
+                                                       NULL,
+                                                       &error);
+  g_assert_no_error (error);
+  g_assert (result != NULL);
+  g_assert_cmpstr (g_variant_get_type_string (result), ==, "(s)");
+  g_variant_get (result, "(s)", &str);
+  g_assert_cmpstr (str, ==, "You greeted me with 'Hey'. Thanks!");
+  g_variant_unref (result);
+
+  /* Check that we can completely recover the returned error */
+  result = g_dbus_proxy_invoke_method_with_reply_sync (proxy,
+                                                       "HelloWorld",
+                                                       g_variant_new ("(s)", "Yo"),
+                                                       -1,
+                                                       NULL,
+                                                       &error);
+  g_assert_error (error, G_DBUS_ERROR, G_DBUS_ERROR_REMOTE_EXCEPTION);
+  g_assert (result == NULL);
+  dbus_error_name = g_dbus_error_get_dbus_error_name (error);
+  g_assert_cmpstr (dbus_error_name, ==, "com.example.TestException");
+  g_free (dbus_error_name);
+  g_assert (g_dbus_error_strip (error));
+  g_assert_cmpstr (error->message, ==, "Yo is not a proper greeting");
+  g_clear_error (&error);
+
+  /* Check that we get a timeout if the method handling is taking longer than timeout */
+  error = NULL;
+  result = g_dbus_proxy_invoke_method_with_reply_sync (proxy,
+                                                       "Sleep",
+                                                       g_variant_new ("(i)", 500 /* msec */),
+                                                       100 /* msec */,
+                                                       NULL,
+                                                       &error);
+  g_assert_error (error, G_DBUS_ERROR, G_DBUS_ERROR_NO_REPLY);
+  g_assert (result == NULL);
+  g_clear_error (&error);
+}
+
+/* ---------------------------------------------------------------------------------------------------- */
 /* Test that the property aspects of GDBusProxy works */
 /* ---------------------------------------------------------------------------------------------------- */
 
@@ -222,6 +281,7 @@ on_proxy_appeared (GDBusConnection *connection,
                    GDBusProxy      *proxy,
                    gpointer         user_data)
 {
+  test_methods (connection, name, name_owner, proxy);
   test_properties (connection, name, name_owner, proxy);
   test_signals (connection, name, name_owner, proxy);
 
