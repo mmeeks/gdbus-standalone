@@ -30,7 +30,7 @@ static const gchar introspection_xml[] =
 
 static void
 handle_method_call (GDBusConnection       *connection,
-                    GObject               *object,
+                    gpointer               user_data,
                     const gchar           *sender,
                     const gchar           *object_path,
                     const gchar           *method_name,
@@ -78,7 +78,7 @@ static gchar *_global_title = NULL;
 
 static GVariant *
 handle_get_property (GDBusConnection  *connection,
-                     GObject          *object,
+                     gpointer          user_data,
                      const gchar      *sender,
                      const gchar      *object_path,
                      const gchar      *property_name,
@@ -116,7 +116,7 @@ handle_get_property (GDBusConnection  *connection,
 
 static gboolean
 handle_set_property (GDBusConnection  *connection,
-                     GObject          *object,
+                     gpointer          user_data,
                      const gchar      *sender,
                      const gchar      *object_path,
                      const gchar      *property_name,
@@ -164,14 +164,13 @@ on_name_acquired (GDBusConnection *connection,
   guint registration_id;
 
   registration_id = g_dbus_connection_register_object (connection,
-                                                       NULL,
                                                        "/org/gtk/GDBus/TestObject",
                                                        "org.gtk.GDBus.TestInterface",
                                                        &introspection_data->interfaces[0],
                                                        &interface_vtable,
-                                                       NULL,
-                                                       NULL,
-                                                       NULL);
+                                                       NULL,  /* user_data */
+                                                       NULL,  /* user_data_free_func */
+                                                       NULL); /* GError** */
   g_assert (registration_id > 0);
 }
 

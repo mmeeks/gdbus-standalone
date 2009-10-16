@@ -257,15 +257,17 @@ test_object_registration (void)
 {
   GDBusConnection *c;
   GError *error;
-  GObject *boss;
-  GObject *worker1;
-  GObject *worker2;
-  GObject *intern1;
-  GObject *intern2;
   ObjectRegistrationData data;
   gchar **nodes;
+  guint boss_foo_reg_id;
+  guint boss_bar_reg_id;
+  guint worker1_foo_reg_id;
+  guint worker2_bar_reg_id;
+  guint intern1_foo_reg_id;
+  guint intern2_bar_reg_id;
+  guint intern2_foo_reg_id;
+  guint intern3_bar_reg_id;
   guint registration_id;
-  guint null_registration_id;
   guint num_successful_registrations;
   DBusConnection *dc;
   DBusError dbus_error;
@@ -287,73 +289,69 @@ test_object_registration (void)
   g_assert_no_error (error);
   g_assert (c != NULL);
 
-  boss = g_object_new (G_TYPE_OBJECT, NULL);
   registration_id = g_dbus_connection_register_object (c,
-                                                       boss,
                                                        "/foo/boss",
                                                        foo_interface_info.name,
                                                        &foo_interface_info,
                                                        &foo_interface_vtable,
-                                                       on_object_unregistered,
                                                        &data,
+                                                       on_object_unregistered,
                                                        &error);
   g_assert_no_error (error);
   g_assert (registration_id > 0);
+  boss_foo_reg_id = registration_id;
   num_successful_registrations++;
 
   registration_id = g_dbus_connection_register_object (c,
-                                                       boss,
                                                        "/foo/boss",
                                                        bar_interface_info.name,
                                                        &bar_interface_info,
                                                        &bar_interface_vtable,
-                                                       on_object_unregistered,
                                                        &data,
+                                                       on_object_unregistered,
                                                        &error);
   g_assert_no_error (error);
   g_assert (registration_id > 0);
+  boss_bar_reg_id = registration_id;
   num_successful_registrations++;
 
-  worker1 = g_object_new (G_TYPE_OBJECT, NULL);
   registration_id = g_dbus_connection_register_object (c,
-                                                       worker1,
                                                        "/foo/boss/worker1",
                                                        foo_interface_info.name,
                                                        &foo_interface_info,
                                                        &foo_interface_vtable,
-                                                       on_object_unregistered,
                                                        &data,
+                                                       on_object_unregistered,
                                                        &error);
   g_assert_no_error (error);
   g_assert (registration_id > 0);
+  worker1_foo_reg_id = registration_id;
   num_successful_registrations++;
 
-  worker2 = g_object_new (G_TYPE_OBJECT, NULL);
   registration_id = g_dbus_connection_register_object (c,
-                                                       worker2,
                                                        "/foo/boss/worker2",
                                                        bar_interface_info.name,
                                                        &bar_interface_info,
                                                        &bar_interface_vtable,
-                                                       on_object_unregistered,
                                                        &data,
+                                                       on_object_unregistered,
                                                        &error);
   g_assert_no_error (error);
   g_assert (registration_id > 0);
+  worker2_bar_reg_id = registration_id;
   num_successful_registrations++;
 
-  intern1 = g_object_new (G_TYPE_OBJECT, NULL);
   registration_id = g_dbus_connection_register_object (c,
-                                                       worker1,
                                                        "/foo/boss/interns/intern1",
                                                        foo_interface_info.name,
                                                        &foo_interface_info,
                                                        &foo_interface_vtable,
-                                                       on_object_unregistered,
                                                        &data,
+                                                       on_object_unregistered,
                                                        &error);
   g_assert_no_error (error);
   g_assert (registration_id > 0);
+  intern1_foo_reg_id = registration_id;
   num_successful_registrations++;
 
   /* Now check we get an error if trying to register a path already registered by another D-Bus binding
@@ -369,15 +367,13 @@ test_object_registration (void)
                                                       &dc_obj_vtable,
                                                       NULL,
                                                       &dbus_error));
-  intern2 = g_object_new (G_TYPE_OBJECT, NULL);
   registration_id = g_dbus_connection_register_object (c,
-                                                       intern2,
                                                        "/foo/boss/interns/other_intern",
                                                        bar_interface_info.name,
                                                        &bar_interface_info,
                                                        &bar_interface_vtable,
-                                                       on_object_unregistered,
                                                        &data,
+                                                       on_object_unregistered,
                                                        &error);
   g_assert_error (error, G_DBUS_ERROR, G_DBUS_ERROR_OBJECT_PATH_IN_USE);
   g_assert (!g_dbus_error_is_remote_error (error));
@@ -387,27 +383,26 @@ test_object_registration (void)
 
   /* ... and try again at another path */
   registration_id = g_dbus_connection_register_object (c,
-                                                       intern2,
                                                        "/foo/boss/interns/intern2",
                                                        bar_interface_info.name,
                                                        &bar_interface_info,
                                                        &bar_interface_vtable,
-                                                       on_object_unregistered,
                                                        &data,
+                                                       on_object_unregistered,
                                                        &error);
   g_assert_no_error (error);
   g_assert (registration_id > 0);
+  intern2_bar_reg_id = registration_id;
   num_successful_registrations++;
 
   /* register at the same path/interface - this should fail */
   registration_id = g_dbus_connection_register_object (c,
-                                                       intern2,
                                                        "/foo/boss/interns/intern2",
                                                        bar_interface_info.name,
                                                        &bar_interface_info,
                                                        &bar_interface_vtable,
-                                                       on_object_unregistered,
                                                        &data,
+                                                       on_object_unregistered,
                                                        &error);
   g_assert_error (error, G_DBUS_ERROR, G_DBUS_ERROR_OBJECT_PATH_IN_USE);
   g_assert (!g_dbus_error_is_remote_error (error));
@@ -417,68 +412,49 @@ test_object_registration (void)
 
   /* register at different interface - shouldn't fail */
   registration_id = g_dbus_connection_register_object (c,
-                                                       intern2,
                                                        "/foo/boss/interns/intern2",
                                                        foo_interface_info.name,
                                                        &foo_interface_info,
                                                        &foo_interface_vtable,
-                                                       on_object_unregistered,
                                                        &data,
+                                                       on_object_unregistered,
                                                        &error);
   g_assert_no_error (error);
   g_assert (registration_id > 0);
-  num_successful_registrations++;
-
-  /* finalize object - should cause two unregistration calls - one for each interface */
-  g_object_unref (intern2);
-  intern2 = NULL;
-  g_assert_cmpint (data.num_unregistered_calls, ==, 2);
-
-  /* register it again */
-  intern2 = g_object_new (G_TYPE_OBJECT, NULL);
-  registration_id = g_dbus_connection_register_object (c,
-                                                       intern2,
-                                                       "/foo/boss/interns/intern2",
-                                                       bar_interface_info.name,
-                                                       &bar_interface_info,
-                                                       &bar_interface_vtable,
-                                                       on_object_unregistered,
-                                                       &data,
-                                                       &error);
-  g_assert_no_error (error);
-  g_assert (registration_id > 0);
+  intern2_foo_reg_id = registration_id;
   num_successful_registrations++;
 
   /* unregister it via the id */
   g_assert (g_dbus_connection_unregister_object (c, registration_id));
-  g_assert_cmpint (data.num_unregistered_calls, ==, 3);
+  g_assert_cmpint (data.num_unregistered_calls, ==, 1);
+  intern2_foo_reg_id = 0;
 
   /* register it back */
   registration_id = g_dbus_connection_register_object (c,
-                                                       intern2,
                                                        "/foo/boss/interns/intern2",
-                                                       bar_interface_info.name,
-                                                       &bar_interface_info,
-                                                       &bar_interface_vtable,
-                                                       on_object_unregistered,
+                                                       foo_interface_info.name,
+                                                       &foo_interface_info,
+                                                       &foo_interface_vtable,
                                                        &data,
+                                                       on_object_unregistered,
                                                        &error);
   g_assert_no_error (error);
   g_assert (registration_id > 0);
+  intern2_foo_reg_id = registration_id;
   num_successful_registrations++;
 
-  /* check we can pass NULL for @object and @vtable */
-  null_registration_id = g_dbus_connection_register_object (c,
-                                                            NULL,
-                                                            "/foo/boss/interns/intern3",
-                                                            bar_interface_info.name,
-                                                            &bar_interface_info,
-                                                            NULL,
-                                                            on_object_unregistered,
-                                                            &data,
-                                                            &error);
+  /* check we can pass NULL for @vtable */
+  registration_id = g_dbus_connection_register_object (c,
+                                                       "/foo/boss/interns/intern3",
+                                                       bar_interface_info.name,
+                                                       &bar_interface_info,
+                                                       NULL,
+                                                       &data,
+                                                       on_object_unregistered,
+                                                       &error);
   g_assert_no_error (error);
-  g_assert (null_registration_id > 0);
+  g_assert (registration_id > 0);
+  intern3_bar_reg_id = registration_id;
   num_successful_registrations++;
 
   /* now check that the object hierarachy is properly generated
@@ -509,20 +485,20 @@ test_object_registration (void)
   g_assert (_g_strv_has_string ((const gchar* const *) nodes, "other_intern")); /* from the other "binding" */
   g_strfreev (nodes);
 
-  g_object_unref (boss);
-  g_object_unref (worker1);
-  g_object_unref (worker2);
-  g_object_unref (intern1);
-  g_object_unref (intern2);
-  /* it's -1 because one of our registrations didn't pass an object */
-  g_assert_cmpint (data.num_unregistered_calls, ==, num_successful_registrations - 1);
+  g_assert (g_dbus_connection_unregister_object (c, boss_foo_reg_id));
+  g_assert (g_dbus_connection_unregister_object (c, boss_bar_reg_id));
+  g_assert (g_dbus_connection_unregister_object (c, worker1_foo_reg_id));
+  g_assert (g_dbus_connection_unregister_object (c, worker2_bar_reg_id));
+  g_assert (g_dbus_connection_unregister_object (c, intern1_foo_reg_id));
+  g_assert (g_dbus_connection_unregister_object (c, intern2_bar_reg_id));
+  g_assert (g_dbus_connection_unregister_object (c, intern2_foo_reg_id));
+  g_assert (g_dbus_connection_unregister_object (c, intern3_bar_reg_id));
+
+  g_assert_cmpint (data.num_unregistered_calls, ==, num_successful_registrations);
 
   /* Shutdown the other "binding" */
   g_assert (dbus_connection_unregister_object_path (dc, "/foo/boss/interns/other_intern"));
   dbus_connection_unref (dc);
-
-  /* we have one remaining registration pending */
-  g_assert (g_dbus_connection_unregister_object (c, null_registration_id));
 
   /* check that we no longer export any objects - TODO: it looks like there's a bug in
    * libdbus-1 here (it still reports the '/foo' object) so disable the test for now

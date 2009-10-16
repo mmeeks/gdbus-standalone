@@ -50,8 +50,8 @@ struct _GDBusMethodInvocationPrivate
   gchar           *interface_name;
   gchar           *method_name;
   GDBusConnection *connection;
-  GObject         *object;
   GVariant        *parameters;
+  gpointer         user_data;
 };
 
 enum
@@ -62,8 +62,8 @@ enum
   PROP_INTERFACE_NAME,
   PROP_METHOD_NAME,
   PROP_CONNECTION,
-  PROP_OBJECT,
-  PROP_PARAMETERS
+  PROP_PARAMETERS,
+  PROP_USER_DATA
 };
 
 G_DEFINE_TYPE (GDBusMethodInvocation, g_dbus_method_invocation, G_TYPE_OBJECT);
@@ -78,8 +78,6 @@ g_dbus_method_invocation_finalize (GObject *object)
   g_free (invocation->priv->interface_name);
   g_free (invocation->priv->method_name);
   g_object_unref (invocation->priv->connection);
-  if (invocation->priv->object != NULL)
-    g_object_unref (invocation->priv->object);
   g_variant_unref (invocation->priv->parameters);
 
   if (G_OBJECT_CLASS (g_dbus_method_invocation_parent_class)->finalize != NULL)
@@ -116,12 +114,12 @@ g_dbus_method_invocation_get_property (GObject    *object,
       g_value_set_object (value, g_dbus_method_invocation_get_connection (invocation));
       break;
 
-    case PROP_OBJECT:
-      g_value_set_object (value, g_dbus_method_invocation_get_object (invocation));
-      break;
-
     case PROP_PARAMETERS:
       g_value_set_boxed (value, g_dbus_method_invocation_get_parameters (invocation));
+      break;
+
+    case PROP_USER_DATA:
+      g_value_set_pointer (value, g_dbus_method_invocation_get_user_data (invocation));
       break;
 
     default:
@@ -160,12 +158,12 @@ g_dbus_method_invocation_set_property (GObject      *object,
       invocation->priv->connection = g_value_dup_object (value);
       break;
 
-    case PROP_OBJECT:
-      invocation->priv->object = g_value_dup_object (value);
-      break;
-
     case PROP_PARAMETERS:
       invocation->priv->parameters = g_value_dup_boxed (value);
+      break;
+
+    case PROP_USER_DATA:
+      invocation->priv->user_data = g_value_get_pointer (value);
       break;
 
     default:
@@ -275,24 +273,6 @@ g_dbus_method_invocation_class_init (GDBusMethodInvocationClass *klass)
                                                         G_PARAM_STATIC_NICK));
 
   /**
-   * GDBusMethodInvocation:object:
-   *
-   * The #GObject passed to g_dbus_connection_register_object().
-   */
-  g_object_class_install_property (gobject_class,
-                                   PROP_OBJECT,
-                                   g_param_spec_object ("object",
-                                                        _("Object"),
-                                                        _("The #GObject passed to g_dbus_connection_register_object()."),
-                                                        G_TYPE_OBJECT,
-                                                        G_PARAM_READABLE |
-                                                        G_PARAM_WRITABLE |
-                                                        G_PARAM_CONSTRUCT_ONLY |
-                                                        G_PARAM_STATIC_NAME |
-                                                        G_PARAM_STATIC_BLURB |
-                                                        G_PARAM_STATIC_NICK));
-
-  /**
    * GDBusMethodInvocation:parameters:
    *
    * The parameters as a #GVariant tuple.
@@ -309,6 +289,23 @@ g_dbus_method_invocation_class_init (GDBusMethodInvocationClass *klass)
                                                        G_PARAM_STATIC_NAME |
                                                        G_PARAM_STATIC_BLURB |
                                                        G_PARAM_STATIC_NICK));
+
+  /**
+   * GDBusMethodInvocation:user-data:
+   *
+   * The @user_data #gpointer passed to g_dbus_connection_register_object().
+   */
+  g_object_class_install_property (gobject_class,
+                                   PROP_USER_DATA,
+                                   g_param_spec_pointer ("user-data",
+                                                        _("User Data"),
+                                                        _("The gpointer passed to g_dbus_connection_register_object()."),
+                                                        G_PARAM_READABLE |
+                                                        G_PARAM_WRITABLE |
+                                                        G_PARAM_CONSTRUCT_ONLY |
+                                                        G_PARAM_STATIC_NAME |
+                                                        G_PARAM_STATIC_BLURB |
+                                                        G_PARAM_STATIC_NICK));
 
   g_type_class_add_private (klass, sizeof (GDBusMethodInvocationPrivate));
 }
@@ -397,21 +394,6 @@ g_dbus_method_invocation_get_connection (GDBusMethodInvocation *invocation)
 }
 
 /**
- * g_dbus_method_invocation_get_object:
- * @invocation: A #GDBusMethodInvocation.
- *
- * Gets the #GObject passed to g_dbus_connection_register_object() (may be %NULL).
- *
- * Returns: A #GObject or %NULL. Do not free, it is owned by @invocation.
- */
-GObject *
-g_dbus_method_invocation_get_object (GDBusMethodInvocation *invocation)
-{
-  g_return_val_if_fail (G_IS_DBUS_METHOD_INVOCATION (invocation), NULL);
-  return invocation->priv->object;
-}
-
-/**
  * g_dbus_method_invocation_get_parameters:
  * @invocation: A #GDBusMethodInvocation.
  *
@@ -427,14 +409,29 @@ g_dbus_method_invocation_get_parameters (GDBusMethodInvocation *invocation)
 }
 
 /**
+ * g_dbus_method_invocation_get_user_data:
+ * @invocation: A #GDBusMethodInvocation.
+ *
+ * Gets the @user_data #gpointer passed to g_dbus_connection_register_object().
+ *
+ * Returns: A #gpointer.
+ */
+gpointer
+g_dbus_method_invocation_get_user_data (GDBusMethodInvocation *invocation)
+{
+  g_return_val_if_fail (G_IS_DBUS_METHOD_INVOCATION (invocation), NULL);
+  return invocation->priv->user_data;
+}
+
+/**
  * g_dbus_method_invocation_new:
  * @sender: The bus name that invoked the method.
  * @object_path: The object path the method was invoked on.
  * @interface_name: The name of the D-Bus interface the method was invoked on.
  * @method_name: The name of the method that was invoked.
  * @connection: The #GDBusConnection the method was invoked on.
- * @object: The #GObject passed to g_dbus_connection_register_object() or %NULL.
  * @parameters: The parameters as a #GVariant tuple.
+ * @user_data: The @user_data #gpointer passed to g_dbus_connection_register_object().
  *
  * Creates a new #GDBusMethodInvocation object.
  *
@@ -446,8 +443,8 @@ g_dbus_method_invocation_new (const gchar      *sender,
                               const gchar      *interface_name,
                               const gchar      *method_name,
                               GDBusConnection  *connection,
-                              GObject          *object,
-                              GVariant         *parameters)
+                              GVariant         *parameters,
+                              gpointer          user_data)
 {
   g_return_val_if_fail (sender != NULL, NULL);
   g_return_val_if_fail (object_path != NULL, NULL);
@@ -462,8 +459,8 @@ g_dbus_method_invocation_new (const gchar      *sender,
                                                  "interface-name", interface_name,
                                                  "method-name", method_name,
                                                  "connection", connection,
-                                                 "object", object,
                                                  "parameters", parameters,
+                                                 "user-data", user_data,
                                                  NULL));
 }
 

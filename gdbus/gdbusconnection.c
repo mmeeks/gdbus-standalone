@@ -2024,37 +2024,21 @@ typedef struct
   guint                       id;
   gchar                      *interface_name;
   const GDBusInterfaceVTable *vtable;
-  GObject                    *object;             /* may be NULL */
-  const GDBusInterfaceInfo   *introspection_data; /* may be NULL */
+  const GDBusInterfaceInfo   *introspection_data;
 
   GMainContext               *context;
-  GDestroyNotify              on_unregistration_func;
-  gpointer                    unregistration_data;
+  gpointer                    user_data;
+  GDestroyNotify              user_data_free_func;
 } ExportedInterface;
-
-/* not holding lock */
-static void
-on_exported_object_finalized (gpointer  user_data,
-                              GObject  *where_the_object_was)
-{
-  ExportedInterface *ei = user_data;
-
-  ei->object = NULL; /* object is byebye already - avoid calling weak_unref() in exported_inteface_free() */
-  g_dbus_connection_unregister_object (ei->eo->connection, ei->id);
-}
 
 /* called with lock held */
 static void
 exported_interface_free (ExportedInterface *ei)
 {
-  if (ei->on_unregistration_func != NULL)
+  if (ei->user_data_free_func != NULL)
     {
       /* TODO: push to thread-default mainloop */
-      ei->on_unregistration_func (ei->unregistration_data);
-    }
-  if (ei->object != NULL)
-    {
-      g_object_weak_unref (ei->object, on_exported_object_finalized, ei);
+      ei->user_data_free_func (ei->user_data);
     }
   if (ei->context != NULL)
     {
@@ -2070,7 +2054,7 @@ typedef struct
 {
   GDBusConnection *connection;
   DBusMessage *message;
-  GObject *object;
+  gpointer user_data;
   const char *property_name;
   const GDBusInterfaceVTable *vtable;
   const GDBusPropertyInfo *property_info;
@@ -2079,8 +2063,6 @@ typedef struct
 static void
 property_data_free (PropertyData *data)
 {
-  if (data->object != NULL)
-    g_object_unref (data->object);
   g_object_unref (data->connection);
   dbus_message_unref (data->message);
   g_free (data);
@@ -2097,7 +2079,7 @@ invoke_get_property_in_idle_cb (gpointer _data)
 
   error = NULL;
   value = data->vtable->get_property (data->connection,
-                                      data->object,
+                                      data->user_data,
                                       dbus_message_get_sender (data->message),
                                       dbus_message_get_path (data->message),
                                       data->property_name,
@@ -2197,7 +2179,7 @@ invoke_set_property_in_idle_cb (gpointer _data)
     }
 
   if (!data->vtable->set_property (data->connection,
-                                   data->object,
+                                   data->user_data,
                                    dbus_message_get_sender (data->message),
                                    dbus_message_get_path (data->message),
                                    data->property_name,
@@ -2328,7 +2310,7 @@ handle_getset_property (DBusConnection *connection,
   property_data = g_new0 (PropertyData, 1);
   property_data->connection = g_object_ref (eo->connection);
   property_data->message = dbus_message_ref (message);
-  property_data->object = ei->object != NULL ? g_object_ref (ei->object) : NULL;
+  property_data->user_data = ei->user_data;
   property_data->property_name = property_name;
   property_data->vtable = ei->vtable;
   property_data->property_info = property_info;
@@ -2354,7 +2336,7 @@ typedef struct
 {
   GDBusConnection *connection;
   DBusMessage *message;
-  GObject *object;
+  gpointer user_data;
   const GDBusInterfaceVTable *vtable;
   const GDBusInterfaceInfo *interface_info;
 } PropertyGetAllData;
@@ -2362,8 +2344,6 @@ typedef struct
 static void
 property_get_all_data_free (PropertyData *data)
 {
-  if (data->object != NULL)
-    g_object_unref (data->object);
   g_object_unref (data->connection);
   dbus_message_unref (data->message);
   g_free (data);
@@ -2399,7 +2379,7 @@ invoke_get_all_properties_in_idle_cb (gpointer _data)
         continue;
 
       value = data->vtable->get_property (data->connection,
-                                          data->object,
+                                          data->user_data,
                                           dbus_message_get_sender (data->message),
                                           dbus_message_get_path (data->message),
                                           property_info->name,
@@ -2481,7 +2461,7 @@ handle_get_all_properties (DBusConnection *connection,
   property_get_all_data = g_new0 (PropertyGetAllData, 1);
   property_get_all_data->connection = g_object_ref (eo->connection);
   property_get_all_data->message = dbus_message_ref (message);
-  property_get_all_data->object = ei->object != NULL ? g_object_ref (ei->object) : NULL;
+  property_get_all_data->user_data = ei->user_data;
   property_get_all_data->vtable = ei->vtable;
   property_get_all_data->interface_info = ei->introspection_data;
 
@@ -2592,15 +2572,15 @@ invoke_method_in_idle_cb (gpointer user_data)
   GDBusInterfaceVTable *vtable;
 
   vtable = g_object_get_data (G_OBJECT (invocation), "g-dbus-interface-vtable");
-  g_assert (vtable != NULL && vtable->handle_method_call != NULL);
+  g_assert (vtable != NULL && vtable->method_call != NULL);
 
-  vtable->handle_method_call (g_dbus_method_invocation_get_connection (invocation),
-                              g_dbus_method_invocation_get_object (invocation),
-                              g_dbus_method_invocation_get_sender (invocation),
-                              g_dbus_method_invocation_get_object_path (invocation),
-                              g_dbus_method_invocation_get_method_name (invocation),
-                              g_dbus_method_invocation_get_parameters (invocation),
-                              g_object_ref (invocation));
+  vtable->method_call (g_dbus_method_invocation_get_connection (invocation),
+                       g_dbus_method_invocation_get_user_data (invocation),
+                       g_dbus_method_invocation_get_sender (invocation),
+                       g_dbus_method_invocation_get_object_path (invocation),
+                       g_dbus_method_invocation_get_method_name (invocation),
+                       g_dbus_method_invocation_get_parameters (invocation),
+                       g_object_ref (invocation));
   return FALSE;
 }
 
@@ -2646,7 +2626,7 @@ dbus_1_obj_vtable_message_func (DBusConnection *connection,
             }
 
           /* handle no vtable or handler being present */
-          if (ei->vtable == NULL || ei->vtable->handle_method_call == NULL)
+          if (ei->vtable == NULL || ei->vtable->method_call == NULL)
             goto out;
 
           /* TODO: the cost of this is O(n) - it might be worth caching the result */
@@ -2684,8 +2664,8 @@ dbus_1_obj_vtable_message_func (DBusConnection *connection,
                                                      dbus_message_get_interface (message),
                                                      dbus_message_get_member (message),
                                                      g_object_ref (eo->connection),
-                                                     ei->object,
-                                                     parameters);
+                                                     parameters,
+                                                     ei->user_data);
           g_variant_unref (parameters);
           g_object_set_data_full (G_OBJECT (invocation),
                                   "dbus-1-message",
@@ -2763,48 +2743,50 @@ static const DBusObjectPathVTable dbus_1_obj_vtable =
 /**
  * g_dbus_connection_register_object:
  * @connection: A #GDBusConnection.
- * @object: The object to register or %NULL.
- * @object_path: The object path to register @object at.
+ * @object_path: The object path to register at.
  * @interface_name: The D-Bus interface to register.
  * @introspection_data: Introspection data for the interface.
  * @vtable: A #GDBusInterfaceVTable to call into or %NULL.
- * @on_unregistration_func: Function to call when @object is unregistered or %NULL.
- * @unregistration_data: Data to pass to @on_unregistration_func.
+ * @user_data: Data to pass to functions in @vtable.
+ * @user_data_free_func: Function to call when the object path is unregistered.
  * @error: Return location for error or %NULL.
  *
- * Exports @object at @object_path and @interface_name.
+ * Registers callbacks for exported objects at @object_path with the
+ * D-Bus interface @interface_name.
  *
- * Calls to functions in @vtable (and @on_unregistration_func) will
+ * Calls to functions in @vtable (and @user_data_free_func) will
  * happen in the <link linkend="g-main-context-push-thread-default">thread-default main
  * loop</link> of the thread you are calling this method from.
  *
- * Note that all #GVariant values passed to functions in @vtable is of
- * the correct type - if a caller passed incorrect values, the
- * %G_DBUS_ERROR_INVALID_ARGS is returned. It is considered an
- * error if the get_property() function in @vtable returns a
- * #GVariant of incorrect type.
+ * Note that all #GVariant values passed to functions in @vtable will match
+ * the signature given in @introspection_data - if a remote caller passes
+ * incorrect values, the <literal>org.freedesktop.DBus.Error.InvalidArgs</literal>
+ * is returned to the remote caller.
  *
- * If an existing object with is already registered at @object_path
- * and @interface_name or another binding is already exporting objects
- * at @object_path, then @error is set to
- * #G_DBUS_ERROR_OBJECT_PATH_IN_USE.
+ * Additionally, if the remote caller attempts to invoke methods or
+ * access properties not mentioned in @introspection_data the
+ * <literal>org.freedesktop.DBus.Error.UnknownMethod</literal> resp.
+ * <literal>org.freedesktop.DBus.Error.InvalidArgs</literal> errors
+ * are returned to the caller.
  *
- * This function will take a weak reference to @object if it is not
- * %NULL. If @object is finalized before unregistering it, then it is
- * automatically unregistered.
+ * It is considered a programming error if the get_property() function
+ * in @vtable returns a #GVariant of incorrect type.
+ *
+ * If an existing callback is already registered at @object_path and
+ * @interface_name or another binding is already exporting objects at
+ * @object_path, then @error is set to #G_DBUS_ERROR_OBJECT_PATH_IN_USE.
  *
  * Returns: 0 if @error is set, otherwise a registration id (never 0)
  * that can be used with g_dbus_connection_unregister_object() .
  */
 guint
 g_dbus_connection_register_object (GDBusConnection            *connection,
-                                   GObject                    *object,
                                    const gchar                *object_path,
                                    const gchar                *interface_name,
                                    const GDBusInterfaceInfo   *introspection_data,
                                    const GDBusInterfaceVTable *vtable,
-                                   GDestroyNotify              on_unregistration_func,
-                                   gpointer                    unregistration_data,
+                                   gpointer                    user_data,
+                                   GDestroyNotify              user_data_free_func,
                                    GError                    **error)
 {
   ExportedObject *eo;
@@ -2875,11 +2857,8 @@ g_dbus_connection_register_object (GDBusConnection            *connection,
   ei = g_new0 (ExportedInterface, 1);
   ei->id = _global_registration_id++; /* TODO: overflow etc. */
   ei->eo = eo;
-  ei->object = object;
-  if (ei->object != NULL)
-    g_object_weak_ref (object, on_exported_object_finalized, ei);
-  ei->on_unregistration_func = on_unregistration_func;
-  ei->unregistration_data = unregistration_data;
+  ei->user_data = user_data;
+  ei->user_data_free_func = user_data_free_func;
   ei->vtable = vtable;
   ei->introspection_data = introspection_data;
   ei->interface_name = g_strdup (interface_name);

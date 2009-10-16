@@ -82,15 +82,15 @@ GDBusMethodInvocation *g_dbus_method_invocation_new                  (const gcha
                                                                       const gchar           *interface_name,
                                                                       const gchar           *method_name,
                                                                       GDBusConnection       *connection,
-                                                                      GObject               *object,
-                                                                      GVariant              *parameters);
+                                                                      GVariant              *parameters,
+                                                                      gpointer               user_data);
 const gchar           *g_dbus_method_invocation_get_sender           (GDBusMethodInvocation *invocation);
 const gchar           *g_dbus_method_invocation_get_object_path      (GDBusMethodInvocation *invocation);
 const gchar           *g_dbus_method_invocation_get_interface_name   (GDBusMethodInvocation *invocation);
 const gchar           *g_dbus_method_invocation_get_method_name      (GDBusMethodInvocation *invocation);
 GDBusConnection       *g_dbus_method_invocation_get_connection       (GDBusMethodInvocation *invocation);
-GObject               *g_dbus_method_invocation_get_object           (GDBusMethodInvocation *invocation);
 GVariant              *g_dbus_method_invocation_get_parameters       (GDBusMethodInvocation *invocation);
+gpointer               g_dbus_method_invocation_get_user_data        (GDBusMethodInvocation *invocation);
 
 void                   g_dbus_method_invocation_return_value         (GDBusMethodInvocation *invocation,
                                                                       GVariant              *parameters);

@@ -111,42 +111,88 @@ void             g_dbus_connection_set_exit_on_disconnect     (GDBusConnection  
                                                                gboolean            exit_on_disconnect);
 
 /**
+ * GDBusInterfaceMethodCallFunc:
+ * @connection: A #GDBusConnection.
+ * @user_data: The @user_data #gpointer passed to g_dbus_connection_register_object().
+ * @sender: The unique bus name of the remote caller.
+ * @object_path: The object path that the method was invoked on.
+ * @method_name: The name of the method that was invoked.
+ * @parameters: A #GVariant tuple with parameters.
+ * @invocation: A #GDBusMethodInvocation that can be used to return a value or error.
+ *
+ * The type of the @method_call function in #GDBusInterfaceVTable.
+ */
+typedef void (*GDBusInterfaceMethodCallFunc) (GDBusConnection       *connection,
+                                              gpointer               user_data,
+                                              const gchar           *sender,
+                                              const gchar           *object_path,
+                                              const gchar           *method_name,
+                                              GVariant              *parameters,
+                                              GDBusMethodInvocation *invocation);
+
+/**
+ * GDBusInterfaceGetPropertyFunc:
+ * @connection: A #GDBusConnection.
+ * @user_data: The @user_data #gpointer passed to g_dbus_connection_register_object().
+ * @sender: The unique bus name of the remote caller.
+ * @object_path: The object path that the method was invoked on.
+ * @property_name: The name of the property to get the value of.
+ * @error: Return location for error.
+ *
+ * The type of the @get_property function in #GDBusInterfaceVTable.
+ *
+ * Returns: A #GVariant with the value for @property_name or %NULL if @error is set.
+ */
+typedef GVariant *(*GDBusInterfaceGetPropertyFunc) (GDBusConnection       *connection,
+                                                    gpointer               user_data,
+                                                    const gchar           *sender,
+                                                    const gchar           *object_path,
+                                                    const gchar           *property_name,
+                                                    GError               **error);
+
+/**
+ * GDBusInterfaceSetPropertyFunc:
+ * @connection: A #GDBusConnection.
+ * @user_data: The @user_data #gpointer passed to g_dbus_connection_register_object().
+ * @sender: The unique bus name of the remote caller.
+ * @object_path: The object path that the method was invoked on.
+ * @property_name: The name of the property to get the value of.
+ * @value: The value to set the property to.
+ * @error: Return location for error.
+ *
+ * The type of the @set_property function in #GDBusInterfaceVTable.
+ *
+ * Returns: %TRUE if the property was set to @value, %FALSE if @error is set.
+ */
+typedef gboolean  (*GDBusInterfaceSetPropertyFunc) (GDBusConnection       *connection,
+                                                    gpointer               user_data,
+                                                    const gchar           *sender,
+                                                    const gchar           *object_path,
+                                                    const gchar           *property_name,
+                                                    GVariant              *value,
+                                                    GError               **error);
+
+
+/**
  * GDBusInterfaceVTable:
- * @handle_method_call: Function for handling incoming method calls.
- * @get_property: Function for getting a property.
- * @set_property: Function for setting a property.
+ * @method_call: Function of type #GDBusInterfaceMethodCallFunc for handling incoming method calls.
+ * @get_property: Function of type #GDBusInterfaceGetPropertyFunc for getting a property.
+ * @set_property: Function of type #GDBusInterfaceSetPropertyFunc for setting a property.
  *
  * Virtual table for handling properties and method calls for a D-Bus
  * interface.
  *
  * If you want to handle getting/setting D-Bus properties asynchronously, simply
  * register an object with the <literal>org.freedesktop.DBus.Properties</literal>
- * using g_dbus_connection_register_object().
+ * D-Bus interface using g_dbus_connection_register_object().
  */
 struct _GDBusInterfaceVTable
 {
-  void      (*handle_method_call)  (GDBusConnection       *connection,
-                                    GObject               *object,
-                                    const gchar           *sender,
-                                    const gchar           *object_path,
-                                    const gchar           *method_name,
-                                    GVariant              *parameters,
-                                    GDBusMethodInvocation *invocation);
+  GDBusInterfaceMethodCallFunc  method_call;
 
-  GVariant *(*get_property)        (GDBusConnection       *connection,
-                                    GObject               *object,
-                                    const gchar           *sender,
-                                    const gchar           *object_path,
-                                    const gchar           *property_name,
-                                    GError               **error);
+  GDBusInterfaceGetPropertyFunc get_property;
 
-  gboolean  (*set_property)        (GDBusConnection       *connection,
-                                    GObject               *object,
-                                    const gchar           *sender,
-                                    const gchar           *object_path,
-                                    const gchar           *property_name,
-                                    GVariant              *value,
-                                    GError               **error);
+  GDBusInterfaceSetPropertyFunc set_property;
 
   /*< private >*/
   /* Padding for future expansion */
@@ -161,13 +207,12 @@ struct _GDBusInterfaceVTable
 };
 
 guint            g_dbus_connection_register_object            (GDBusConnection            *connection,
-                                                               GObject                    *object,
                                                                const gchar                *object_path,
                                                                const gchar                *interface_name,
                                                                const GDBusInterfaceInfo   *introspection_data,
                                                                const GDBusInterfaceVTable *vtable,
-                                                               GDestroyNotify              on_unregistration_func,
-                                                               gpointer                    unregistration_data,
+                                                               gpointer                    user_data,
+                                                               GDestroyNotify              user_data_free_func,
                                                                GError                    **error);
 gboolean         g_dbus_connection_unregister_object          (GDBusConnection            *connection,
                                                                guint                       registration_id);
@@ -203,8 +248,6 @@ GVariant *g_dbus_connection_invoke_method_sync                (GDBusConnection  
                                                                gint                timeout_msec,
                                                                GCancellable       *cancellable,
                                                                GError            **error);
-
-/* The following is only for the C object mapping and should not be bound to other languages */
 
 /**
  * GDBusSignalCallback:
