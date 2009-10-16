@@ -33,6 +33,7 @@ handle_method_call (GDBusConnection       *connection,
                     gpointer               user_data,
                     const gchar           *sender,
                     const gchar           *object_path,
+                    const gchar           *interface_name,
                     const gchar           *method_name,
                     GVariant              *parameters,
                     GDBusMethodInvocation *invocation)
@@ -81,6 +82,7 @@ handle_get_property (GDBusConnection  *connection,
                      gpointer          user_data,
                      const gchar      *sender,
                      const gchar      *object_path,
+                     const gchar      *interface_name,
                      const gchar      *property_name,
                      GError          **error)
 {
@@ -119,6 +121,7 @@ handle_set_property (GDBusConnection  *connection,
                      gpointer          user_data,
                      const gchar      *sender,
                      const gchar      *object_path,
+                     const gchar      *interface_name,
                      const gchar      *property_name,
                      GVariant         *value,
                      GError          **error)

@@ -133,6 +133,7 @@ noinst_PROGRAMS += example-own-name
 noinst_PROGRAMS += example-watch-name
 noinst_PROGRAMS += example-watch-proxy
 noinst_PROGRAMS += example-server
+noinst_PROGRAMS += example-subtree
 
 example_watch_name_SOURCES = example-watch-name.c
 example_watch_name_CFLAGS  = $(GLIB2_CFLAGS) $(GOBJECT2_CFLAGS) $(GIO2_CFLAGS)
@@ -149,6 +150,10 @@ example_own_name_LDADD   = libgdbus-standalone.la $(GLIB2_LIBS) $(GOBJECT2_LIBS)
 example_server_SOURCES = example-server.c
 example_server_CFLAGS  = $(GLIB2_CFLAGS) $(GOBJECT2_CFLAGS) $(GIO2_CFLAGS)
 example_server_LDADD   = libgdbus-standalone.la $(GLIB2_LIBS) $(GOBJECT2_LIBS) $(GIO2_LIBS)
+
+example_subtree_SOURCES = example-subtree.c
+example_subtree_CFLAGS  = $(GLIB2_CFLAGS) $(GOBJECT2_CFLAGS) $(GIO2_CFLAGS)
+example_subtree_LDADD   = libgdbus-standalone.la $(GLIB2_LIBS) $(GOBJECT2_LIBS) $(GIO2_LIBS)
 
 clean-local :
 	rm -f *~

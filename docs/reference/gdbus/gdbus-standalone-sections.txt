@@ -28,6 +28,12 @@ GDBusInterfaceGetPropertyFunc
 GDBusInterfaceSetPropertyFunc
 g_dbus_connection_register_object
 g_dbus_connection_unregister_object
+GDBusSubtreeVTable
+GDBusSubtreeEnumerateFunc
+GDBusSubtreeIntrospectFunc
+GDBusSubtreeDispatchFunc
+g_dbus_connection_register_subtree
+g_dbus_connection_unregister_subtree
 <SUBSECTION Standard>
 G_DBUS_CONNECTION
 G_IS_DBUS_CONNECTION

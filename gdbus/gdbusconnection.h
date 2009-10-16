@@ -116,9 +116,10 @@ void             g_dbus_connection_set_exit_on_disconnect     (GDBusConnection  
  * @user_data: The @user_data #gpointer passed to g_dbus_connection_register_object().
  * @sender: The unique bus name of the remote caller.
  * @object_path: The object path that the method was invoked on.
+ * @interface_name: The D-Bus interface name the method was invoked on.
  * @method_name: The name of the method that was invoked.
  * @parameters: A #GVariant tuple with parameters.
- * @invocation: A #GDBusMethodInvocation that can be used to return a value or error.
+ * @invocation: A #GDBusMethodInvocation object that can be used to return a value or error.
  *
  * The type of the @method_call function in #GDBusInterfaceVTable.
  */
@@ -126,6 +127,7 @@ typedef void (*GDBusInterfaceMethodCallFunc) (GDBusConnection       *connection,
                                               gpointer               user_data,
                                               const gchar           *sender,
                                               const gchar           *object_path,
+                                              const gchar           *interface_name,
                                               const gchar           *method_name,
                                               GVariant              *parameters,
                                               GDBusMethodInvocation *invocation);
@@ -136,17 +138,19 @@ typedef void (*GDBusInterfaceMethodCallFunc) (GDBusConnection       *connection,
  * @user_data: The @user_data #gpointer passed to g_dbus_connection_register_object().
  * @sender: The unique bus name of the remote caller.
  * @object_path: The object path that the method was invoked on.
+ * @interface_name: The D-Bus interface name for the property.
  * @property_name: The name of the property to get the value of.
  * @error: Return location for error.
  *
  * The type of the @get_property function in #GDBusInterfaceVTable.
  *
- * Returns: A #GVariant with the value for @property_name or %NULL if @error is set.
+ * Returns: A newly-allocated #GVariant with the value for @property_name or %NULL if @error is set.
  */
 typedef GVariant *(*GDBusInterfaceGetPropertyFunc) (GDBusConnection       *connection,
                                                     gpointer               user_data,
                                                     const gchar           *sender,
                                                     const gchar           *object_path,
+                                                    const gchar           *interface_name,
                                                     const gchar           *property_name,
                                                     GError               **error);
 
@@ -156,6 +160,7 @@ typedef GVariant *(*GDBusInterfaceGetPropertyFunc) (GDBusConnection       *conne
  * @user_data: The @user_data #gpointer passed to g_dbus_connection_register_object().
  * @sender: The unique bus name of the remote caller.
  * @object_path: The object path that the method was invoked on.
+ * @interface_name: The D-Bus interface name for the property.
  * @property_name: The name of the property to get the value of.
  * @value: The value to set the property to.
  * @error: Return location for error.
@@ -168,16 +173,16 @@ typedef gboolean  (*GDBusInterfaceSetPropertyFunc) (GDBusConnection       *conne
                                                     gpointer               user_data,
                                                     const gchar           *sender,
                                                     const gchar           *object_path,
+                                                    const gchar           *interface_name,
                                                     const gchar           *property_name,
                                                     GVariant              *value,
                                                     GError               **error);
 
-
 /**
  * GDBusInterfaceVTable:
- * @method_call: Function of type #GDBusInterfaceMethodCallFunc for handling incoming method calls.
- * @get_property: Function of type #GDBusInterfaceGetPropertyFunc for getting a property.
- * @set_property: Function of type #GDBusInterfaceSetPropertyFunc for setting a property.
+ * @method_call: Function for handling incoming method calls.
+ * @get_property: Function for getting a property.
+ * @set_property: Function for setting a property.
  *
  * Virtual table for handling properties and method calls for a D-Bus
  * interface.
@@ -189,9 +194,7 @@ typedef gboolean  (*GDBusInterfaceSetPropertyFunc) (GDBusConnection       *conne
 struct _GDBusInterfaceVTable
 {
   GDBusInterfaceMethodCallFunc  method_call;
-
   GDBusInterfaceGetPropertyFunc get_property;
-
   GDBusInterfaceSetPropertyFunc set_property;
 
   /*< private >*/
@@ -217,7 +220,97 @@ guint            g_dbus_connection_register_object            (GDBusConnection  
 gboolean         g_dbus_connection_unregister_object          (GDBusConnection            *connection,
                                                                guint                       registration_id);
 
-/* TODO: make it possible to export a subtree (cf. dbus_connection_register_fallback()) */
+/**
+ * GDBusSubtreeEnumerateFunc:
+ * @connection: A #GDBusConnection.
+ * @user_data: The @user_data #gpointer passed to g_dbus_connection_register_subtree().
+ * @sender: The unique bus name of the remote caller.
+ * @object_path: The object path that was registered with g_dbus_connection_register_subtree().
+ *
+ * The type of the @enumerate function in #GDBusSubtreeVTable.
+ *
+ * Returns: A newly allocated array of strings for node names that are children of @object_path.
+ */
+typedef gchar** (*GDBusSubtreeEnumerateFunc) (GDBusConnection       *connection,
+                                              gpointer               user_data,
+                                              const gchar           *sender,
+                                              const gchar           *object_path);
+
+/**
+ * GDBusSubtreeIntrospectFunc:
+ * @connection: A #GDBusConnection.
+ * @user_data: The @user_data #gpointer passed to g_dbus_connection_register_subtree().
+ * @sender: The unique bus name of the remote caller.
+ * @object_path: The object path that was registered with g_dbus_connection_register_subtree().
+ * @node: A node that is a child of @object_path (relative to @object_path) or <quote>/</quote> for the root of the subtree.
+ *
+ * The type of the @introspect function in #GDBusSubtreeVTable.
+ *
+ * Returns: A newly-allocated #GPtrArray with pointers to #GDBusInterfaceInfo describing
+ * the interfaces implemented by @node.
+ */
+typedef GPtrArray *(*GDBusSubtreeIntrospectFunc) (GDBusConnection       *connection,
+                                                  gpointer               user_data,
+                                                  const gchar           *sender,
+                                                  const gchar           *object_path,
+                                                  const gchar           *node);
+
+/**
+ * GDBusSubtreeDispatchFunc:
+ * @connection: A #GDBusConnection.
+ * @user_data: The @user_data #gpointer passed to g_dbus_connection_register_subtree().
+ * @sender: The unique bus name of the remote caller.
+ * @object_path: The object path that was registered with g_dbus_connection_register_subtree().
+ * @interface_name: The D-Bus interface name that the method call or property access is for.
+ * @node: A node that is a child of @object_path (relative to @object_path) or <quote>/</quote> for the root of the subtree.
+ * @out_user_data: Return location for user data to pass to functions in the returned #GDBusInterfaceVTable (never %NULL).
+ *
+ * The type of the @dispatch function in #GDBusSubtreeVtable.
+ *
+ * Returns: A #GDBusInterfaceVTable or %NULL if you don't want to handle the methods.
+ */
+typedef const GDBusInterfaceVTable * (*GDBusSubtreeDispatchFunc) (GDBusConnection             *connection,
+                                                                  gpointer                     user_data,
+                                                                  const gchar                 *sender,
+                                                                  const gchar                 *object_path,
+                                                                  const gchar                 *interface_name,
+                                                                  const gchar                 *node,
+                                                                  gpointer                    *out_user_data);
+
+/**
+ * GDBusSubtreeVTable:
+ * @enumerate: Function for enumerating child nodes.
+ * @introspect: Function for introspecting a child node.
+ * @dispatch: Function for dispatching a remote call on a child node.
+ *
+ * Virtual table for handling subtrees registered with g_dbus_connection_register_subtree().
+ */
+struct _GDBusSubtreeVTable
+{
+  GDBusSubtreeEnumerateFunc  enumerate;
+  GDBusSubtreeIntrospectFunc introspect;
+  GDBusSubtreeDispatchFunc   dispatch;
+
+  /*< private >*/
+  /* Padding for future expansion */
+  void (*_g_reserved1) (void);
+  void (*_g_reserved2) (void);
+  void (*_g_reserved3) (void);
+  void (*_g_reserved4) (void);
+  void (*_g_reserved5) (void);
+  void (*_g_reserved6) (void);
+  void (*_g_reserved7) (void);
+  void (*_g_reserved8) (void);
+};
+
+guint            g_dbus_connection_register_subtree           (GDBusConnection            *connection,
+                                                               const gchar                *object_path,
+                                                               const GDBusSubtreeVTable   *vtable,
+                                                               gpointer                    user_data,
+                                                               GDestroyNotify              user_data_free_func,
+                                                               GError                    **error);
+gboolean         g_dbus_connection_unregister_subtree         (GDBusConnection            *connection,
+                                                               guint                       registration_id);
 
 gboolean  g_dbus_connection_emit_signal                       (GDBusConnection    *connection,
                                                                const gchar        *destination_bus_name,
