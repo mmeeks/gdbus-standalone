@@ -69,7 +69,7 @@ enum
   PROP_G_DBUS_PROXY_FLAGS,
   PROP_G_DBUS_PROXY_OBJECT_PATH,
   PROP_G_DBUS_PROXY_INTERFACE_NAME,
-  PROP_G_DBUS_PROXY_TIMEOUT,
+  PROP_G_DBUS_PROXY_DEFAULT_TIMEOUT,
 };
 
 enum
@@ -149,7 +149,7 @@ g_dbus_proxy_get_property (GObject    *object,
       g_value_set_string (value, proxy->priv->interface_name);
       break;
 
-    case PROP_G_DBUS_PROXY_TIMEOUT:
+    case PROP_G_DBUS_PROXY_DEFAULT_TIMEOUT:
       g_value_set_int (value, proxy->priv->timeout_msec);
       break;
 
@@ -189,8 +189,8 @@ g_dbus_proxy_set_property (GObject      *object,
       proxy->priv->interface_name = g_value_dup_string (value);
       break;
 
-    case PROP_G_DBUS_PROXY_TIMEOUT:
-      g_dbus_proxy_set_timeout (proxy, g_value_get_int (value));
+    case PROP_G_DBUS_PROXY_DEFAULT_TIMEOUT:
+      g_dbus_proxy_set_default_timeout (proxy, g_value_get_int (value));
       break;
 
     default:
@@ -304,7 +304,7 @@ g_dbus_proxy_class_init (GDBusProxyClass *klass)
                                                         G_PARAM_STATIC_NICK));
 
   /**
-   * GDBusProxy:g-dbus-proxy-timeout:
+   * GDBusProxy:g-dbus-proxy-default-timeout:
    *
    * The timeout to use if -1 (specifying default timeout) is passed
    * as @timeout_msec in the g_dbus_proxy_invoke_method() and
@@ -316,9 +316,9 @@ g_dbus_proxy_class_init (GDBusProxyClass *klass)
    * %G_MAXINT, then no timeout is used.
    */
   g_object_class_install_property (gobject_class,
-                                   PROP_G_DBUS_PROXY_TIMEOUT,
-                                   g_param_spec_int ("g-dbus-proxy-timeout",
-                                                     _("g-dbus-proxy-timeout"),
+                                   PROP_G_DBUS_PROXY_DEFAULT_TIMEOUT,
+                                   g_param_spec_int ("g-dbus-proxy-default-timeout",
+                                                     _("Default Timeout"),
                                                      _("Timeout for remote method invocation"),
                                                      -1,
                                                      G_MAXINT,
@@ -976,26 +976,26 @@ g_dbus_proxy_get_interface_name (GDBusProxy *proxy)
 }
 
 /**
- * g_dbus_proxy_get_timeout:
+ * g_dbus_proxy_get_default_timeout:
  * @proxy: A #GDBusProxy.
  *
  * Gets the timeout to use if -1 (specifying default timeout) is
  * passed as @timeout_msec in the g_dbus_proxy_invoke_method() and
  * g_dbus_proxy_invoke_method_sync() functions.
  *
- * See the #GDBusProxy:g-dbus-proxy-timeout property for more details.
+ * See the #GDBusProxy:g-dbus-proxy-default-timeout property for more details.
  *
  * Returns: Timeout to use for @proxy.
  */
 gint
-g_dbus_proxy_get_timeout (GDBusProxy *proxy)
+g_dbus_proxy_get_default_timeout (GDBusProxy *proxy)
 {
   g_return_val_if_fail (G_IS_DBUS_PROXY (proxy), -1);
   return proxy->priv->timeout_msec;
 }
 
 /**
- * g_dbus_proxy_set_timeout:
+ * g_dbus_proxy_set_default_timeout:
  * @proxy: A #GDBusProxy.
  * @timeout_msec: Timeout in milliseconds.
  *
@@ -1003,11 +1003,11 @@ g_dbus_proxy_get_timeout (GDBusProxy *proxy)
  * passed as @timeout_msec in the g_dbus_proxy_invoke_method() and
  * g_dbus_proxy_invoke_method_sync() functions.
  *
- * See the #GDBusProxy:g-dbus-proxy-timeout property for more details.
+ * See the #GDBusProxy:g-dbus-proxy-default-timeout property for more details.
  */
 void
-g_dbus_proxy_set_timeout (GDBusProxy *proxy,
-                          gint        timeout_msec)
+g_dbus_proxy_set_default_timeout (GDBusProxy *proxy,
+                                  gint        timeout_msec)
 {
   g_return_if_fail (G_IS_DBUS_PROXY (proxy));
   g_return_if_fail (timeout_msec >= -1);
@@ -1016,7 +1016,7 @@ g_dbus_proxy_set_timeout (GDBusProxy *proxy,
   if (proxy->priv->timeout_msec != timeout_msec)
     {
       proxy->priv->timeout_msec = timeout_msec;
-      g_object_notify (G_OBJECT (proxy), "g-dbus-proxy-timeout");
+      g_object_notify (G_OBJECT (proxy), "g-dbus-proxy-default-timeout");
     }
 }
 

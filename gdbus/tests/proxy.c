@@ -91,7 +91,7 @@ test_methods (GDBusConnection *connection,
   g_clear_error (&error);
 
   /* Check that proxy-default timeouts work. */
-  g_assert_cmpint (g_dbus_proxy_get_timeout (proxy), ==, -1);
+  g_assert_cmpint (g_dbus_proxy_get_default_timeout (proxy), ==, -1);
 
   /* the default timeout is 25000 msec so this should work */
   result = g_dbus_proxy_invoke_method_sync (proxy,
@@ -106,8 +106,8 @@ test_methods (GDBusConnection *connection,
   g_variant_unref (result);
 
   /* now set the proxy-default timeout to 250 msec and try the 500 msec call - this should FAIL */
-  g_dbus_proxy_set_timeout (proxy, 250);
-  g_assert_cmpint (g_dbus_proxy_get_timeout (proxy), ==, 250);
+  g_dbus_proxy_set_default_timeout (proxy, 250);
+  g_assert_cmpint (g_dbus_proxy_get_default_timeout (proxy), ==, 250);
   result = g_dbus_proxy_invoke_method_sync (proxy,
                                             "Sleep",
                                             g_variant_new ("(i)", 500 /* msec */),
@@ -120,7 +120,7 @@ test_methods (GDBusConnection *connection,
   g_clear_error (&error);
 
   /* clean up after ourselves */
-  g_dbus_proxy_set_timeout (proxy, -1);
+  g_dbus_proxy_set_default_timeout (proxy, -1);
 }
 
 /* ---------------------------------------------------------------------------------------------------- */
