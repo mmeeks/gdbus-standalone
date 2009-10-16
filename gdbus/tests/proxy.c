@@ -67,11 +67,13 @@ test_methods (GDBusConnection *connection,
                                             NULL,
                                             &error);
   g_assert_error (error, G_DBUS_ERROR, G_DBUS_ERROR_REMOTE_ERROR);
+  g_assert (g_dbus_error_is_remote_error (error));
+  g_assert (g_dbus_error_is_remote_error (error));
   g_assert (result == NULL);
-  dbus_error_name = g_dbus_error_get_dbus_error_name (error);
+  dbus_error_name = g_dbus_error_get_remote_error (error);
   g_assert_cmpstr (dbus_error_name, ==, "com.example.TestException");
   g_free (dbus_error_name);
-  g_assert (g_dbus_error_strip (error));
+  g_assert (g_dbus_error_strip_remote_error (error));
   g_assert_cmpstr (error->message, ==, "Yo is not a proper greeting");
   g_clear_error (&error);
 
@@ -84,6 +86,7 @@ test_methods (GDBusConnection *connection,
                                             NULL,
                                             &error);
   g_assert_error (error, G_DBUS_ERROR, G_DBUS_ERROR_NO_REPLY);
+  g_assert (g_dbus_error_is_remote_error (error));
   g_assert (result == NULL);
   g_clear_error (&error);
 }

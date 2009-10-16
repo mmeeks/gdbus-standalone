@@ -94,8 +94,9 @@ g_bus_unwatch_proxy
 <FILE>gdbuserror</FILE>
 GDBusError
 G_DBUS_ERROR
-g_dbus_error_get_dbus_error_name
-g_dbus_error_strip
+g_dbus_error_is_remote_error
+g_dbus_error_get_remote_error
+g_dbus_error_strip_remote_error
 g_dbus_error_register_error
 g_dbus_error_unregister_error
 g_dbus_error_new_for_dbus_error

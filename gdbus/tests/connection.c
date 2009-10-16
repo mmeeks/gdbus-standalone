@@ -47,6 +47,7 @@ test_connection_life_cycle (void)
    */
   c = g_dbus_connection_bus_get_sync (G_BUS_TYPE_SESSION, NULL, &error);
   g_assert_error (error, G_DBUS_ERROR, G_DBUS_ERROR_FILE_NOT_FOUND);
+  g_assert (!g_dbus_error_is_remote_error (error));
   g_assert (c == NULL);
   g_error_free (error);
   error = NULL;
@@ -107,6 +108,7 @@ msg_cb_expect_error_disconnected (GDBusConnection *connection,
                                                    res,
                                                    &error);
   g_assert_error (error, G_DBUS_ERROR, G_DBUS_ERROR_DISCONNECTED);
+  g_assert (!g_dbus_error_is_remote_error (error));
   g_error_free (error);
   g_assert (result == NULL);
 
@@ -126,6 +128,7 @@ msg_cb_expect_error_unknown_method (GDBusConnection *connection,
                                                    res,
                                                    &error);
   g_assert_error (error, G_DBUS_ERROR, G_DBUS_ERROR_UNKNOWN_METHOD);
+  g_assert (g_dbus_error_is_remote_error (error));
   g_assert (result == NULL);
 
   g_main_loop_quit (loop);
@@ -163,6 +166,7 @@ msg_cb_expect_error_cancelled (GDBusConnection *connection,
                                                    res,
                                                    &error);
   g_assert_error (error, G_DBUS_ERROR, G_DBUS_ERROR_CANCELLED);
+  g_assert (!g_dbus_error_is_remote_error (error));
   g_error_free (error);
   g_assert (result == NULL);
 

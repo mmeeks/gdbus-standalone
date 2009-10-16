@@ -78,6 +78,7 @@ msg_cb_expect_error_cancelled (GDBusConnection *connection,
                                                    res,
                                                    &error);
   g_assert_error (error, G_DBUS_ERROR, G_DBUS_ERROR_CANCELLED);
+  g_assert (!g_dbus_error_is_remote_error (error));
   g_error_free (error);
   g_assert (result == NULL);
 

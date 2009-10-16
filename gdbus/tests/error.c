@@ -38,8 +38,10 @@ check_registered_error (const gchar *given_dbus_error_name,
 
   error = g_dbus_error_new_for_dbus_error (given_dbus_error_name, "test message");
   g_assert_error (error, error_domain, error_code);
+  g_assert (g_dbus_error_is_remote_error (error));
+  g_assert (g_dbus_error_strip_remote_error (error));
   g_assert_cmpstr (error->message, ==, "test message");
-  dbus_error_name = g_dbus_error_get_dbus_error_name (error);
+  dbus_error_name = g_dbus_error_get_remote_error (error);
   g_assert_cmpstr (dbus_error_name, ==, given_dbus_error_name);
   g_free (dbus_error_name);
   g_error_free (error);
@@ -85,16 +87,17 @@ check_unregistered_error (const gchar *given_dbus_error_name)
 
   error = g_dbus_error_new_for_dbus_error (given_dbus_error_name, "test message");
   g_assert_error (error, G_DBUS_ERROR, G_DBUS_ERROR_REMOTE_ERROR);
-  dbus_error_name = g_dbus_error_get_dbus_error_name (error);
+  g_assert (g_dbus_error_is_remote_error (error));
+  dbus_error_name = g_dbus_error_get_remote_error (error);
   g_assert_cmpstr (dbus_error_name, ==, given_dbus_error_name);
   g_free (dbus_error_name);
 
   /* strip the message */
-  g_assert (g_dbus_error_strip (error));
+  g_assert (g_dbus_error_strip_remote_error (error));
   g_assert_cmpstr (error->message, ==, "test message");
 
   /* check that we can no longer recover the D-Bus error name */
-  g_assert (g_dbus_error_get_dbus_error_name (error) == NULL);
+  g_assert (g_dbus_error_get_remote_error (error) == NULL);
 
   g_error_free (error);
 
@@ -138,17 +141,18 @@ check_transparent_gerror (GQuark error_domain,
 
   error = g_dbus_error_new_for_dbus_error (given_dbus_error_name, "test message");
   g_assert_error (error, error_domain, error_code);
-  dbus_error_name = g_dbus_error_get_dbus_error_name (error);
+  g_assert (g_dbus_error_is_remote_error (error));
+  dbus_error_name = g_dbus_error_get_remote_error (error);
   g_assert_cmpstr (dbus_error_name, ==, given_dbus_error_name);
   g_free (dbus_error_name);
   g_free (given_dbus_error_name);
 
   /* strip the message */
-  g_assert (g_dbus_error_strip (error));
+  g_assert (g_dbus_error_strip_remote_error (error));
   g_assert_cmpstr (error->message, ==, "test message");
 
   /* check that we can no longer recover the D-Bus error name */
-  g_assert (g_dbus_error_get_dbus_error_name (error) == NULL);
+  g_assert (g_dbus_error_get_remote_error (error) == NULL);
 
   g_error_free (error);
 }

@@ -380,6 +380,7 @@ test_object_registration (void)
                                                        &data,
                                                        &error);
   g_assert_error (error, G_DBUS_ERROR, G_DBUS_ERROR_OBJECT_PATH_IN_USE);
+  g_assert (!g_dbus_error_is_remote_error (error));
   g_error_free (error);
   error = NULL;
   g_assert (registration_id == 0);
@@ -409,6 +410,7 @@ test_object_registration (void)
                                                        &data,
                                                        &error);
   g_assert_error (error, G_DBUS_ERROR, G_DBUS_ERROR_OBJECT_PATH_IN_USE);
+  g_assert (!g_dbus_error_is_remote_error (error));
   g_error_free (error);
   error = NULL;
   g_assert (registration_id == 0);

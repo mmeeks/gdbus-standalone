@@ -737,6 +737,8 @@ initable_init (GInitable       *initable,
                                    dbus_error.name,
                                    dbus_error.message,
                                    NULL);
+      /* this is a locally generated error so strip the remote part */
+      g_dbus_error_strip_remote_error (connection->priv->initialization_error);
       dbus_error_free (&dbus_error);
       g_propagate_error (error, g_error_copy (connection->priv->initialization_error));
     }
@@ -2647,14 +2649,11 @@ dbus_1_obj_vtable_message_func (DBusConnection *connection,
           if (ei->vtable == NULL || ei->vtable->handle_method_call == NULL)
             goto out;
 
-          /* Check that the incoming args are of the right type - if they are not, then fail
-           * with %G_DBUS_ERROR_INVALID_ARGS
-           */
-          method_info = NULL;
-
           /* TODO: the cost of this is O(n) - it might be worth caching the result */
           method_info = g_dbus_interface_info_lookup_method (ei->introspection_data,
                                                              dbus_message_get_member (message));
+          /* if the method doesn't exist, return the org.freedesktop.DBus.Error.UnknownMethod
+           * error to the caller */
           if (method_info == NULL)
             {
               reply = dbus_message_new_error (message,
@@ -2666,6 +2665,9 @@ dbus_1_obj_vtable_message_func (DBusConnection *connection,
               goto out;
             }
 
+          /* Check that the incoming args are of the right type - if they are not, return
+           * the org.freedesktop.DBus.Error.InvalidArgs error to the caller
+           */
           if (!dbus_message_has_signature (message, method_info->in_signature))
             {
               reply = dbus_message_new_error (message,
@@ -2848,6 +2850,11 @@ g_dbus_connection_register_object (GDBusConnection            *connection,
                                        dbus_error.message,
                                        _("Another D-Bus binding is already exporting an object at %s"),
                                        object_path);
+          if (error != NULL)
+            {
+              /* this is a locally generated error so strip the remote part */
+              g_dbus_error_strip_remote_error (*error);
+            }
           dbus_error_free (&dbus_error);
           goto out;
         }

@@ -41,17 +41,18 @@ G_BEGIN_DECLS
 
 GQuark g_dbus_error_quark (void);
 
-/* Used by applications to get and strip the D-Bus error name */
-gchar   *g_dbus_error_get_dbus_error_name (const GError *error);
-gboolean g_dbus_error_strip               (GError       *error);
+/* Used by applications to check, get and strip the D-Bus error name */
+gboolean g_dbus_error_is_remote_error       (const GError *error);
+gchar   *g_dbus_error_get_remote_error      (const GError *error);
+gboolean g_dbus_error_strip_remote_error    (GError       *error);
 
 /* Used by applications to associate GError domains with D-Bus error names */
-gboolean g_dbus_error_register_error      (GQuark        error_domain,
-                                           gint          error_code,
-                                           const gchar  *dbus_error_name);
-gboolean g_dbus_error_unregister_error    (GQuark        error_domain,
-                                           gint          error_code,
-                                           const gchar  *dbus_error_name);
+gboolean g_dbus_error_register_error        (GQuark        error_domain,
+                                             gint          error_code,
+                                             const gchar  *dbus_error_name);
+gboolean g_dbus_error_unregister_error      (GQuark        error_domain,
+                                             gint          error_code,
+                                             const gchar  *dbus_error_name);
 
 /* Only used by object mappings to map back and forth to GError */
 GError  *g_dbus_error_new_for_dbus_error    (const gchar  *dbus_error_name,

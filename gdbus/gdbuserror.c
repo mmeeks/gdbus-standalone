@@ -40,8 +40,10 @@
  * Error helper functions for GDBus.
  *
  * All facilities in GDBus (such as g_dbus_connection_invoke_method_sync())
- * that return errors as a result of remote method invocations use #GError. To get
- * the actual D-Bus error name, use g_dbus_error_get_dbus_error_name().
+ * that return errors as a result of remote method invocations returning
+ * errors use #GError. To check if a returned #GError is the result of
+ * a remote error, use g_dbus_error_is_remote_error(). To get
+ * the actual D-Bus error name, use g_dbus_error_get_remote_error().
  *
  * In addition, facilities that are used to return errors to a remote
  * caller also use #GError. See g_dbus_method_invocation_return_error()
@@ -105,9 +107,9 @@
  * </programlisting>
  * With this setup, a server can transparently pass e.g. %FOO_BAR_ERROR_ANOTHER_ERROR and
  * clients will see the D-Bus error name <literal>org.project.Foo.Bar.Error.AnotherError</literal>.
- * If the client is using GDBus, the client will see also  %FOO_BAR_ERROR_ANOTHER_ERROR instead
+ * If the client is using GDBus, the client will see also %FOO_BAR_ERROR_ANOTHER_ERROR instead
  * of %G_DBUS_ERROR_REMOTE_ERROR. Note that GDBus clients can still recover
- * <literal>org.project.Foo.Bar.Error.AnotherError</literal> using g_dbus_error_get_dbus_error_name().
+ * <literal>org.project.Foo.Bar.Error.AnotherError</literal> using g_dbus_error_get_remote_error().
  */
 
 /**
@@ -436,19 +438,37 @@ g_dbus_error_unregister_error (GQuark       error_domain,
 /* ---------------------------------------------------------------------------------------------------- */
 
 /**
- * g_dbus_error_get_dbus_error_name:
+ * g_dbus_error_is_remote_error:
+ * @error: A #GError.
+ *
+ * Checks if @error represents an error from a remote process. If so,
+ * use g_dbus_error_get_remote_error() to get the name of the error.
+ *
+ * Returns: %TRUE if @error represents an error from a remote process,
+ * %FALSE otherwise.
+ */
+gboolean
+g_dbus_error_is_remote_error (const GError *error)
+{
+  g_return_val_if_fail (error != NULL, FALSE);
+  return g_str_has_prefix (error->message, "GDBus.Error:");
+}
+
+
+/**
+ * g_dbus_error_get_remote_error:
  * @error: A #GError.
  *
  * Gets the D-Bus error name used for @error, if any.
  *
  * This function is guaranteed to return a D-Bus error name for all #GError<!-- -->s returned from
  * functions handling remote method calls (e.g. g_dbus_connection_invoke_method_finish())
- * unless g_dbus_error_strip() has been used on @error.
+ * unless g_dbus_error_strip_remote_error() has been used on @error.
  *
  * Returns: An allocated string or %NULL if the D-Bus error name could not be found. Free with g_free().
  */
 gchar *
-g_dbus_error_get_dbus_error_name (const GError *error)
+g_dbus_error_get_remote_error (const GError *error)
 {
   RegisteredError *re;
   gchar *ret;
@@ -509,23 +529,23 @@ g_dbus_error_get_dbus_error_name (const GError *error)
  *
  * Errors registered with g_dbus_error_register_error() will be looked
  * up using @dbus_error_name and if a match is found, the error domain
- * and code is used. Applications can use g_dbus_error_get_dbus_error_name()
+ * and code is used. Applications can use g_dbus_error_get_remote_error()
  * to recover @dbus_error_name.
  *
  * If a match against a registered error is not found and the D-Bus
  * error name is in a form as returned by g_dbus_error_encode_gerror()
  * the error domain and code encoded in the name is used to
  * create the #GError. Also, @dbus_error_name is added to the error message
- * such that it can be recovered with g_dbus_error_get_dbus_error_name().
+ * such that it can be recovered with g_dbus_error_get_remote_error().
  *
  * Otherwise, a #GError with the error code %G_DBUS_ERROR_REMOTE_ERROR
  * in the #G_DBUS_ERROR error domain is returned. Also, @dbus_error_name is
  * added to the error message such that it can be recovered with
- * g_dbus_error_get_dbus_error_name().
+ * g_dbus_error_get_remote_error().
  *
  * In all three cases, @dbus_error_name can always be recovered from the
- * returned #GError using the g_dbus_error_get_dbus_error_name() function
- * (unless g_dbus_error_strip() hasn't been used on the returned error).
+ * returned #GError using the g_dbus_error_get_remote_error() function
+ * (unless g_dbus_error_strip_remote_error() hasn't been used on the returned error).
  *
  * This function is typically only used in object mappings to prepare
  * #GError instances for applications. Regular applications should not use
@@ -558,9 +578,11 @@ g_dbus_error_new_for_dbus_error (const gchar *dbus_error_name,
 
   if (re != NULL)
     {
-      error = g_error_new_literal (re->pair.error_domain,
-                                   re->pair.error_code,
-                                   dbus_error_message);
+      error = g_error_new (re->pair.error_domain,
+                           re->pair.error_code,
+                           "GDBus.Error:%s: %s",
+                           dbus_error_name,
+                           dbus_error_message);
     }
   else
     {
@@ -673,7 +695,7 @@ g_dbus_error_set_dbus_error_valist (GError      **error,
 }
 
 /**
- * g_dbus_error_strip:
+ * g_dbus_error_strip_remote_error:
  * @error: A #GError.
  *
  * Looks for extra information in the error message used to recover
@@ -686,7 +708,7 @@ g_dbus_error_set_dbus_error_valist (GError      **error,
  * Returns: %TRUE if information was stripped, %FALSE otherwise.
  */
 gboolean
-g_dbus_error_strip (GError *error)
+g_dbus_error_strip_remote_error (GError *error)
 {
   gboolean ret;
 
