@@ -109,6 +109,9 @@ GDBusProxyFlags  g_dbus_proxy_get_flags            (GDBusProxy          *proxy);
 const gchar     *g_dbus_proxy_get_unique_bus_name  (GDBusProxy          *proxy);
 const gchar     *g_dbus_proxy_get_object_path      (GDBusProxy          *proxy);
 const gchar     *g_dbus_proxy_get_interface_name   (GDBusProxy          *proxy);
+gint             g_dbus_proxy_get_timeout          (GDBusProxy          *proxy);
+void             g_dbus_proxy_set_timeout          (GDBusProxy          *proxy,
+                                                    gint                 timeout_msec);
 GVariant        *g_dbus_proxy_get_cached_property  (GDBusProxy          *proxy,
                                                     const gchar         *property_name,
                                                     GError             **error);

@@ -52,6 +52,7 @@ struct _GDBusProxyPrivate
   gchar *unique_bus_name;
   gchar *object_path;
   gchar *interface_name;
+  gint timeout_msec;
 
   /* gchar* -> GVariant* */
   GHashTable *properties;
@@ -68,6 +69,7 @@ enum
   PROP_G_DBUS_PROXY_FLAGS,
   PROP_G_DBUS_PROXY_OBJECT_PATH,
   PROP_G_DBUS_PROXY_INTERFACE_NAME,
+  PROP_G_DBUS_PROXY_TIMEOUT,
 };
 
 enum
@@ -147,6 +149,10 @@ g_dbus_proxy_get_property (GObject    *object,
       g_value_set_string (value, proxy->priv->interface_name);
       break;
 
+    case PROP_G_DBUS_PROXY_TIMEOUT:
+      g_value_set_int (value, proxy->priv->timeout_msec);
+      break;
+
     default:
       G_OBJECT_WARN_INVALID_PROPERTY_ID (object, prop_id, pspec);
       break;
@@ -181,6 +187,10 @@ g_dbus_proxy_set_property (GObject      *object,
 
     case PROP_G_DBUS_PROXY_INTERFACE_NAME:
       proxy->priv->interface_name = g_value_dup_string (value);
+      break;
+
+    case PROP_G_DBUS_PROXY_TIMEOUT:
+      g_dbus_proxy_set_timeout (proxy, g_value_get_int (value));
       break;
 
     default:
@@ -292,6 +302,33 @@ g_dbus_proxy_class_init (GDBusProxyClass *klass)
                                                         G_PARAM_STATIC_NAME |
                                                         G_PARAM_STATIC_BLURB |
                                                         G_PARAM_STATIC_NICK));
+
+  /**
+   * GDBusProxy:g-dbus-proxy-timeout:
+   *
+   * The timeout to use if -1 (specifying default timeout) is passed
+   * as @timeout_msec in the g_dbus_proxy_invoke_method() and
+   * g_dbus_proxy_invoke_method_sync() functions.
+   *
+   * This allows applications to set a proxy-wide timeout for all
+   * remote method invocations on the proxy. If this property is -1,
+   * the default timeout (typically 25 seconds) is used. If set to
+   * %G_MAXINT, then no timeout is used.
+   */
+  g_object_class_install_property (gobject_class,
+                                   PROP_G_DBUS_PROXY_TIMEOUT,
+                                   g_param_spec_int ("g-dbus-proxy-timeout",
+                                                     _("g-dbus-proxy-timeout"),
+                                                     _("Timeout for remote method invocation"),
+                                                     -1,
+                                                     G_MAXINT,
+                                                     -1,
+                                                     G_PARAM_READABLE |
+                                                     G_PARAM_WRITABLE |
+                                                     G_PARAM_CONSTRUCT |
+                                                     G_PARAM_STATIC_NAME |
+                                                     G_PARAM_STATIC_BLURB |
+                                                     G_PARAM_STATIC_NICK));
 
   /**
    * GDBusProxy::g-dbus-proxy-properties-changed:
@@ -938,6 +975,51 @@ g_dbus_proxy_get_interface_name (GDBusProxy *proxy)
   return proxy->priv->interface_name;
 }
 
+/**
+ * g_dbus_proxy_get_timeout:
+ * @proxy: A #GDBusProxy.
+ *
+ * Gets the timeout to use if -1 (specifying default timeout) is
+ * passed as @timeout_msec in the g_dbus_proxy_invoke_method() and
+ * g_dbus_proxy_invoke_method_sync() functions.
+ *
+ * See the #GDBusProxy:g-dbus-proxy-timeout property for more details.
+ *
+ * Returns: Timeout to use for @proxy.
+ */
+gint
+g_dbus_proxy_get_timeout (GDBusProxy *proxy)
+{
+  g_return_val_if_fail (G_IS_DBUS_PROXY (proxy), -1);
+  return proxy->priv->timeout_msec;
+}
+
+/**
+ * g_dbus_proxy_set_timeout:
+ * @proxy: A #GDBusProxy.
+ * @timeout_msec: Timeout in milliseconds.
+ *
+ * Sets the timeout to use if -1 (specifying default timeout) is
+ * passed as @timeout_msec in the g_dbus_proxy_invoke_method() and
+ * g_dbus_proxy_invoke_method_sync() functions.
+ *
+ * See the #GDBusProxy:g-dbus-proxy-timeout property for more details.
+ */
+void
+g_dbus_proxy_set_timeout (GDBusProxy *proxy,
+                          gint        timeout_msec)
+{
+  g_return_if_fail (G_IS_DBUS_PROXY (proxy));
+  g_return_if_fail (timeout_msec >= -1);
+
+  /* TODO: locking? */
+  if (proxy->priv->timeout_msec != timeout_msec)
+    {
+      proxy->priv->timeout_msec = timeout_msec;
+      g_object_notify (G_OBJECT (proxy), "g-dbus-proxy-timeout");
+    }
+}
+
 /* ---------------------------------------------------------------------------------------------------- */
 
 static gboolean
@@ -1007,7 +1089,7 @@ reply_cb (GDBusConnection *connection,
  * @proxy: A #GDBusProxy.
  * @method_name: Name of method to invoke.
  * @parameters: A #GVariant tuple with parameters for the signal or %NULL if not passing parameters.
- * @timeout_msec: The timeout in milliseconds or -1 to use the default timeout.
+ * @timeout_msec: The timeout in milliseconds or -1 to use the proxy default timeout.
  * @cancellable: A #GCancellable or %NULL.
  * @callback: A #GAsyncReadyCallback to call when the request is satisfied or %NULL if you don't
  * care about the result of the method invocation.
@@ -1063,7 +1145,7 @@ g_dbus_proxy_invoke_method (GDBusProxy          *proxy,
                                    was_split ? split_interface_name : proxy->priv->interface_name,
                                    was_split ? split_method_name : method_name,
                                    parameters,
-                                   timeout_msec,
+                                   timeout_msec == -1 ? proxy->priv->timeout_msec : timeout_msec,
                                    cancellable,
                                    (GAsyncReadyCallback) reply_cb,
                                    simple);
@@ -1111,7 +1193,7 @@ g_dbus_proxy_invoke_method_finish (GDBusProxy    *proxy,
  * @proxy: A #GDBusProxy.
  * @method_name: Name of method to invoke.
  * @parameters: A #GVariant tuple with parameters for the signal or %NULL if not passing parameters.
- * @timeout_msec: The timeout in milliseconds or -1 to use the default timeout.
+ * @timeout_msec: The timeout in milliseconds or -1 to use the proxy default timeout.
  * @cancellable: A #GCancellable or %NULL.
  * @error: Return location for error or %NULL.
  *
@@ -1159,7 +1241,7 @@ g_dbus_proxy_invoke_method_sync (GDBusProxy     *proxy,
                                               was_split ? split_interface_name : proxy->priv->interface_name,
                                               was_split ? split_method_name : method_name,
                                               parameters,
-                                              timeout_msec,
+                                              timeout_msec == -1 ? proxy->priv->timeout_msec : timeout_msec,
                                               cancellable,
                                               error);
 
