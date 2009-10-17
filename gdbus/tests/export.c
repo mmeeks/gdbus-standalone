@@ -169,6 +169,7 @@ get_nodes_at (GDBusConnection  *c,
 
   error = NULL;
   proxy = g_dbus_proxy_new_sync (c,
+                                 G_TYPE_DBUS_PROXY,
                                  G_DBUS_PROXY_FLAGS_DO_NOT_LOAD_PROPERTIES |
                                  G_DBUS_PROXY_FLAGS_DO_NOT_CONNECT_SIGNALS,
                                  g_dbus_connection_get_unique_name (c),
@@ -223,6 +224,7 @@ has_interface (GDBusConnection *c,
 
   error = NULL;
   proxy = g_dbus_proxy_new_sync (c,
+                                 G_TYPE_DBUS_PROXY,
                                  G_DBUS_PROXY_FLAGS_DO_NOT_LOAD_PROPERTIES |
                                  G_DBUS_PROXY_FLAGS_DO_NOT_CONNECT_SIGNALS,
                                  g_dbus_connection_get_unique_name (c),
@@ -270,6 +272,7 @@ count_interfaces (GDBusConnection *c,
 
   error = NULL;
   proxy = g_dbus_proxy_new_sync (c,
+                                 G_TYPE_DBUS_PROXY,
                                  G_DBUS_PROXY_FLAGS_DO_NOT_LOAD_PROPERTIES |
                                  G_DBUS_PROXY_FLAGS_DO_NOT_CONNECT_SIGNALS,
                                  g_dbus_connection_get_unique_name (c),

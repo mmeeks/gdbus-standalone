@@ -88,6 +88,7 @@ struct _GDBusProxyClass
 
 GType            g_dbus_proxy_get_type             (void) G_GNUC_CONST;
 void             g_dbus_proxy_new                  (GDBusConnection     *connection,
+                                                    GType                object_type,
                                                     GDBusProxyFlags      flags,
                                                     const gchar         *unique_bus_name,
                                                     const gchar         *object_path,
@@ -98,6 +99,7 @@ void             g_dbus_proxy_new                  (GDBusConnection     *connect
 GDBusProxy      *g_dbus_proxy_new_finish           (GAsyncResult        *res,
                                                     GError             **error);
 GDBusProxy      *g_dbus_proxy_new_sync             (GDBusConnection     *connection,
+                                                    GType                object_type,
                                                     GDBusProxyFlags      flags,
                                                     const gchar         *unique_bus_name,
                                                     const gchar         *object_path,

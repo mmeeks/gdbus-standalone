@@ -157,7 +157,7 @@ test_properties (GDBusConnection *connection,
   g_variant_unref (variant);
 
   /**
-   * Now ask the service to change a property and check that #GDBusProxy::g-dbus-proxy-property-changed
+   * Now ask the service to change a property and check that #GDBusProxy::g-property-changed
    * is received. Also check that the cache is updated.
    */
   variant2 = g_variant_new_byte (42);
@@ -173,7 +173,7 @@ test_properties (GDBusConnection *connection,
   g_assert (result != NULL);
   g_assert_cmpstr (g_variant_get_type_string (result), ==, "()");
   g_variant_unref (result);
-  _g_assert_signal_received (proxy, "g-dbus-proxy-properties-changed");
+  _g_assert_signal_received (proxy, "g-properties-changed");
   variant = g_dbus_proxy_get_cached_property (proxy, "y", &error);
   g_assert_no_error (error);
   g_assert (variant != NULL);
@@ -253,7 +253,7 @@ test_signals (GDBusConnection *connection,
    */
   s = g_string_new (NULL);
   signal_handler_id = g_signal_connect (proxy,
-                                        "g-dbus-proxy-signal",
+                                        "g-signal",
                                         G_CALLBACK (test_proxy_signals_on_signal),
                                         s);
 
@@ -272,7 +272,7 @@ test_signals (GDBusConnection *connection,
   /* check that we haven't received the signal just yet */
   g_assert (strlen (s->str) == 0);
   /* and now wait for the signal */
-  _g_assert_signal_received (proxy, "g-dbus-proxy-signal");
+  _g_assert_signal_received (proxy, "g-signal");
   g_assert_cmpstr (s->str,
                    ==,
                    "(\"Accept the next proposition you hear .. in bed!\", objectpath \"/some/path/in/bed\", <\"a variant\">)");
@@ -286,7 +286,7 @@ test_signals (GDBusConnection *connection,
   data.internal_loop = g_main_loop_new (NULL, FALSE);
   data.s = s;
   signal_handler_id = g_signal_connect (proxy,
-                                        "g-dbus-proxy-signal",
+                                        "g-signal",
                                         G_CALLBACK (test_proxy_signals_on_signal),
                                         s);
   g_dbus_proxy_invoke_method (proxy,

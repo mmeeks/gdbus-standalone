@@ -64,12 +64,12 @@ struct _GDBusProxyPrivate
 enum
 {
   PROP_0,
-  PROP_G_DBUS_PROXY_CONNECTION,
-  PROP_G_DBUS_PROXY_UNIQUE_BUS_NAME,
-  PROP_G_DBUS_PROXY_FLAGS,
-  PROP_G_DBUS_PROXY_OBJECT_PATH,
-  PROP_G_DBUS_PROXY_INTERFACE_NAME,
-  PROP_G_DBUS_PROXY_DEFAULT_TIMEOUT,
+  PROP_G_CONNECTION,
+  PROP_G_UNIQUE_BUS_NAME,
+  PROP_G_FLAGS,
+  PROP_G_OBJECT_PATH,
+  PROP_G_INTERFACE_NAME,
+  PROP_G_DEFAULT_TIMEOUT,
 };
 
 enum
@@ -129,27 +129,27 @@ g_dbus_proxy_get_property (GObject    *object,
 
   switch (prop_id)
     {
-    case PROP_G_DBUS_PROXY_CONNECTION:
+    case PROP_G_CONNECTION:
       g_value_set_object (value, proxy->priv->connection);
       break;
 
-    case PROP_G_DBUS_PROXY_FLAGS:
+    case PROP_G_FLAGS:
       g_value_set_flags (value, proxy->priv->flags);
       break;
 
-    case PROP_G_DBUS_PROXY_UNIQUE_BUS_NAME:
+    case PROP_G_UNIQUE_BUS_NAME:
       g_value_set_string (value, proxy->priv->unique_bus_name);
       break;
 
-    case PROP_G_DBUS_PROXY_OBJECT_PATH:
+    case PROP_G_OBJECT_PATH:
       g_value_set_string (value, proxy->priv->object_path);
       break;
 
-    case PROP_G_DBUS_PROXY_INTERFACE_NAME:
+    case PROP_G_INTERFACE_NAME:
       g_value_set_string (value, proxy->priv->interface_name);
       break;
 
-    case PROP_G_DBUS_PROXY_DEFAULT_TIMEOUT:
+    case PROP_G_DEFAULT_TIMEOUT:
       g_value_set_int (value, proxy->priv->timeout_msec);
       break;
 
@@ -169,27 +169,27 @@ g_dbus_proxy_set_property (GObject      *object,
 
   switch (prop_id)
     {
-    case PROP_G_DBUS_PROXY_CONNECTION:
+    case PROP_G_CONNECTION:
       proxy->priv->connection = g_value_dup_object (value);
       break;
 
-    case PROP_G_DBUS_PROXY_FLAGS:
+    case PROP_G_FLAGS:
       proxy->priv->flags = g_value_get_flags (value);
       break;
 
-    case PROP_G_DBUS_PROXY_UNIQUE_BUS_NAME:
+    case PROP_G_UNIQUE_BUS_NAME:
       proxy->priv->unique_bus_name = g_value_dup_string (value);
       break;
 
-    case PROP_G_DBUS_PROXY_OBJECT_PATH:
+    case PROP_G_OBJECT_PATH:
       proxy->priv->object_path = g_value_dup_string (value);
       break;
 
-    case PROP_G_DBUS_PROXY_INTERFACE_NAME:
+    case PROP_G_INTERFACE_NAME:
       proxy->priv->interface_name = g_value_dup_string (value);
       break;
 
-    case PROP_G_DBUS_PROXY_DEFAULT_TIMEOUT:
+    case PROP_G_DEFAULT_TIMEOUT:
       g_dbus_proxy_set_default_timeout (proxy, g_value_get_int (value));
       break;
 
@@ -213,14 +213,14 @@ g_dbus_proxy_class_init (GDBusProxyClass *klass)
    * in derived classes */
 
   /**
-   * GDBusProxy:g-dbus-proxy-connection:
+   * GDBusProxy:g-connection:
    *
    * The @GDBusConnection the proxy is for.
    */
   g_object_class_install_property (gobject_class,
-                                   PROP_G_DBUS_PROXY_CONNECTION,
-                                   g_param_spec_object ("g-dbus-proxy-connection",
-                                                        _("g-dbus-proxy-connection"),
+                                   PROP_G_CONNECTION,
+                                   g_param_spec_object ("g-connection",
+                                                        _("g-connection"),
                                                         _("The connection the proxy is for"),
                                                         G_TYPE_DBUS_CONNECTION,
                                                         G_PARAM_READABLE |
@@ -231,14 +231,14 @@ g_dbus_proxy_class_init (GDBusProxyClass *klass)
                                                         G_PARAM_STATIC_NICK));
 
   /**
-   * GDBusProxy:g-dbus-proxy-flags:
+   * GDBusProxy:g-flags:
    *
    * Flags from the #GDBusProxyFlags enumeration.
    */
   g_object_class_install_property (gobject_class,
-                                   PROP_G_DBUS_PROXY_FLAGS,
-                                   g_param_spec_flags ("g-dbus-proxy-flags",
-                                                       _("g-dbus-proxy-flags"),
+                                   PROP_G_FLAGS,
+                                   g_param_spec_flags ("g-flags",
+                                                       _("g-flags"),
                                                        _("Flags for the proxy"),
                                                        G_TYPE_DBUS_PROXY_FLAGS,
                                                        G_DBUS_PROXY_FLAGS_NONE,
@@ -250,14 +250,14 @@ g_dbus_proxy_class_init (GDBusProxyClass *klass)
                                                        G_PARAM_STATIC_NICK));
 
   /**
-   * GDBusProxy:g-dbus-proxy-unique-bus-name:
+   * GDBusProxy:g-unique-bus-name:
    *
    * The unique bus name the proxy is for.
    */
   g_object_class_install_property (gobject_class,
-                                   PROP_G_DBUS_PROXY_UNIQUE_BUS_NAME,
-                                   g_param_spec_string ("g-dbus-proxy-unique-bus-name",
-                                                        _("g-dbus-proxy-unique-bus-name"),
+                                   PROP_G_UNIQUE_BUS_NAME,
+                                   g_param_spec_string ("g-unique-bus-name",
+                                                        _("g-unique-bus-name"),
                                                         _("The unique bus name the proxy is for"),
                                                         NULL,
                                                         G_PARAM_READABLE |
@@ -268,14 +268,14 @@ g_dbus_proxy_class_init (GDBusProxyClass *klass)
                                                         G_PARAM_STATIC_NICK));
 
   /**
-   * GDBusProxy:g-dbus-proxy-object-path:
+   * GDBusProxy:g-object-path:
    *
    * The object path the proxy is for.
    */
   g_object_class_install_property (gobject_class,
-                                   PROP_G_DBUS_PROXY_OBJECT_PATH,
-                                   g_param_spec_string ("g-dbus-proxy-object-path",
-                                                        _("g-dbus-proxy-object-path"),
+                                   PROP_G_OBJECT_PATH,
+                                   g_param_spec_string ("g-object-path",
+                                                        _("g-object-path"),
                                                         _("The object path the proxy is for"),
                                                         NULL,
                                                         G_PARAM_READABLE |
@@ -286,14 +286,14 @@ g_dbus_proxy_class_init (GDBusProxyClass *klass)
                                                         G_PARAM_STATIC_NICK));
 
   /**
-   * GDBusProxy:g-dbus-proxy-interface-name:
+   * GDBusProxy:g-interface-name:
    *
    * The D-Bus interface name the proxy is for.
    */
   g_object_class_install_property (gobject_class,
-                                   PROP_G_DBUS_PROXY_INTERFACE_NAME,
-                                   g_param_spec_string ("g-dbus-proxy-interface-name",
-                                                        _("g-dbus-proxy-interface-name"),
+                                   PROP_G_INTERFACE_NAME,
+                                   g_param_spec_string ("g-interface-name",
+                                                        _("g-interface-name"),
                                                         _("The D-Bus interface name the proxy is for"),
                                                         NULL,
                                                         G_PARAM_READABLE |
@@ -304,7 +304,7 @@ g_dbus_proxy_class_init (GDBusProxyClass *klass)
                                                         G_PARAM_STATIC_NICK));
 
   /**
-   * GDBusProxy:g-dbus-proxy-default-timeout:
+   * GDBusProxy:g-default-timeout:
    *
    * The timeout to use if -1 (specifying default timeout) is passed
    * as @timeout_msec in the g_dbus_proxy_invoke_method() and
@@ -316,8 +316,8 @@ g_dbus_proxy_class_init (GDBusProxyClass *klass)
    * %G_MAXINT, then no timeout is used.
    */
   g_object_class_install_property (gobject_class,
-                                   PROP_G_DBUS_PROXY_DEFAULT_TIMEOUT,
-                                   g_param_spec_int ("g-dbus-proxy-default-timeout",
+                                   PROP_G_DEFAULT_TIMEOUT,
+                                   g_param_spec_int ("g-default-timeout",
                                                      _("Default Timeout"),
                                                      _("Timeout for remote method invocation"),
                                                      -1,
@@ -331,14 +331,14 @@ g_dbus_proxy_class_init (GDBusProxyClass *klass)
                                                      G_PARAM_STATIC_NICK));
 
   /**
-   * GDBusProxy::g-dbus-proxy-properties-changed:
+   * GDBusProxy::g-properties-changed:
    * @proxy: The #GDBusProxy emitting the signal.
    * @changed_properties: A #GHashTable containing the properties that changed.
    *
    * Emitted when one or more D-Bus properties on @proxy changes. The cached properties
    * are already replaced when this signal fires.
    */
-  signals[PROPERTIES_CHANGED_SIGNAL] = g_signal_new ("g-dbus-proxy-properties-changed",
+  signals[PROPERTIES_CHANGED_SIGNAL] = g_signal_new ("g-properties-changed",
                                                      G_TYPE_DBUS_PROXY,
                                                      G_SIGNAL_RUN_LAST,
                                                      G_STRUCT_OFFSET (GDBusProxyClass, properties_changed),
@@ -350,7 +350,7 @@ g_dbus_proxy_class_init (GDBusProxyClass *klass)
                                                      G_TYPE_HASH_TABLE);
 
   /**
-   * GDBusProxy::g-dbus-proxy-signal:
+   * GDBusProxy::g-signal:
    * @proxy: The #GDBusProxy emitting the signal.
    * @sender_name: The sender of the signal.
    * @signal_name: The name of the signal.
@@ -358,7 +358,7 @@ g_dbus_proxy_class_init (GDBusProxyClass *klass)
    *
    * Emitted when a signal from the remote object and interface that @proxy is for, has been received.
    **/
-  signals[SIGNAL_SIGNAL] = g_signal_new ("g-dbus-proxy-signal",
+  signals[SIGNAL_SIGNAL] = g_signal_new ("g-signal",
                                          G_TYPE_DBUS_PROXY,
                                          G_SIGNAL_RUN_LAST,
                                          G_STRUCT_OFFSET (GDBusProxyClass, signal),
@@ -393,11 +393,11 @@ g_dbus_proxy_init (GDBusProxy *proxy)
  *
  * Normally you will not need to modify the returned variant since it is updated automatically
  * in response to <literal>org.freedesktop.DBus.Properties.PropertiesChanged</literal>
- * D-Bus signals (which also causes #GDBusProxy::g-dbus-proxy-properties-changed to be emitted).
+ * D-Bus signals (which also causes #GDBusProxy::g-properties-changed to be emitted).
  *
  * However, for properties for which said D-Bus signal is not emitted, you
  * can catch other signals and modify the returned variant accordingly (remember to emit
- * #GDBusProxy::g-dbus-proxy-properties-changed yourself).
+ * #GDBusProxy::g-properties-changed yourself).
  *
  * Returns: A reference to the #GVariant instance that holds the value for @property_name or
  * %NULL if @error is set. Free the reference with g_variant_unref().
@@ -760,6 +760,7 @@ async_initable_iface_init (GAsyncInitableIface *async_initable_iface)
 /**
  * g_dbus_proxy_new:
  * @connection: A #GDBusConnection.
+ * @object_type: Either #G_TYPE_DBUS_PROXY or the #GType for the #GDBusProxy<!-- -->-derived type of proxy to create.
  * @flags: Flags used when constructing the proxy.
  * @unique_bus_name: A unique bus name.
  * @object_path: An object path.
@@ -771,10 +772,10 @@ async_initable_iface_init (GAsyncInitableIface *async_initable_iface)
  * Creates a proxy for accessing @interface_name on the remote object at @object_path
  * owned by @unique_bus_name at @connection and asynchronously loads D-Bus properties unless the
  * #G_DBUS_PROXY_FLAGS_DO_NOT_LOAD_PROPERTIES flag is used. Connect to the
- * #GDBusProxy::g-dbus-proxy-properties-changed signal to get notified about property changes.
+ * #GDBusProxy::g-properties-changed signal to get notified about property changes.
  *
  * If the #G_DBUS_PROXY_FLAGS_DO_NOT_CONNECT_SIGNALS flag is not set, also sets up
- * match rules for signals. Connect to the #GDBusProxy::g-dbus-proxy-signal signal
+ * match rules for signals. Connect to the #GDBusProxy::g-signal signal
  * to handle signals from the remote object.
  *
  * This is a failable asynchronous constructor - when the proxy is
@@ -785,6 +786,7 @@ async_initable_iface_init (GAsyncInitableIface *async_initable_iface)
  **/
 void
 g_dbus_proxy_new (GDBusConnection     *connection,
+                  GType                object_type,
                   GDBusProxyFlags      flags,
                   const gchar         *unique_bus_name,
                   const gchar         *object_path,
@@ -794,20 +796,21 @@ g_dbus_proxy_new (GDBusConnection     *connection,
                   gpointer             user_data)
 {
   g_return_if_fail (G_IS_DBUS_CONNECTION (connection));
+  g_return_if_fail (g_type_is_a (object_type, G_TYPE_DBUS_PROXY));
   g_return_if_fail (unique_bus_name != NULL); /* TODO: check that it is unique */
   g_return_if_fail (object_path != NULL);
   g_return_if_fail (interface_name);
 
-  g_async_initable_new_async (G_TYPE_DBUS_PROXY,
+  g_async_initable_new_async (object_type,
                               G_PRIORITY_DEFAULT,
                               cancellable,
                               callback,
                               user_data,
-                              "g-dbus-proxy-flags", flags,
-                              "g-dbus-proxy-unique-bus-name", unique_bus_name,
-                              "g-dbus-proxy-connection", connection,
-                              "g-dbus-proxy-object-path", object_path,
-                              "g-dbus-proxy-interface-name", interface_name,
+                              "g-flags", flags,
+                              "g-unique-bus-name", unique_bus_name,
+                              "g-connection", connection,
+                              "g-object-path", object_path,
+                              "g-interface-name", interface_name,
                               NULL);
 }
 
@@ -847,6 +850,7 @@ g_dbus_proxy_new_finish (GAsyncResult  *res,
 /**
  * g_dbus_proxy_new_sync:
  * @connection: A #GDBusConnection.
+ * @object_type: Either #G_TYPE_DBUS_PROXY or the #GType for the #GDBusProxy<!-- -->-derived type of proxy to create.
  * @flags: Flags used when constructing the proxy.
  * @unique_bus_name: A unique bus name.
  * @object_path: An object path.
@@ -859,7 +863,7 @@ g_dbus_proxy_new_finish (GAsyncResult  *res,
  * #G_DBUS_PROXY_FLAGS_DO_NOT_LOAD_PROPERTIES flag is used.
  *
  * If the #G_DBUS_PROXY_FLAGS_DO_NOT_CONNECT_SIGNALS flag is not set, also sets up
- * match rules for signals. Connect to the #GDBusProxy::g-dbus-proxy-signal signal
+ * match rules for signals. Connect to the #GDBusProxy::g-signal signal
  * to handle signals from the remote object.
  *
  * This is a synchronous failable constructor. See g_dbus_proxy_new()
@@ -869,6 +873,7 @@ g_dbus_proxy_new_finish (GAsyncResult  *res,
  **/
 GDBusProxy *
 g_dbus_proxy_new_sync (GDBusConnection     *connection,
+                       GType                object_type,
                        GDBusProxyFlags      flags,
                        const gchar         *unique_bus_name,
                        const gchar         *object_path,
@@ -879,18 +884,19 @@ g_dbus_proxy_new_sync (GDBusConnection     *connection,
   GInitable *initable;
 
   g_return_val_if_fail (G_IS_DBUS_CONNECTION (connection), NULL);
+  g_return_val_if_fail (g_type_is_a (object_type, G_TYPE_DBUS_PROXY), NULL);
   g_return_val_if_fail (unique_bus_name != NULL, NULL); /* TODO: check that it is unique */
   g_return_val_if_fail (object_path != NULL, NULL);
   g_return_val_if_fail (interface_name, NULL);
 
-  initable = g_initable_new (G_TYPE_DBUS_PROXY,
+  initable = g_initable_new (object_type,
                              cancellable,
                              error,
-                             "g-dbus-proxy-flags", flags,
-                             "g-dbus-proxy-unique-bus-name", unique_bus_name,
-                             "g-dbus-proxy-connection", connection,
-                             "g-dbus-proxy-object-path", object_path,
-                             "g-dbus-proxy-interface-name", interface_name,
+                             "g-flags", flags,
+                             "g-unique-bus-name", unique_bus_name,
+                             "g-connection", connection,
+                             "g-object-path", object_path,
+                             "g-interface-name", interface_name,
                              NULL);
   if (initable != NULL)
     return G_DBUS_PROXY (initable);
@@ -983,7 +989,7 @@ g_dbus_proxy_get_interface_name (GDBusProxy *proxy)
  * passed as @timeout_msec in the g_dbus_proxy_invoke_method() and
  * g_dbus_proxy_invoke_method_sync() functions.
  *
- * See the #GDBusProxy:g-dbus-proxy-default-timeout property for more details.
+ * See the #GDBusProxy:g-default-timeout property for more details.
  *
  * Returns: Timeout to use for @proxy.
  */
@@ -1003,7 +1009,7 @@ g_dbus_proxy_get_default_timeout (GDBusProxy *proxy)
  * passed as @timeout_msec in the g_dbus_proxy_invoke_method() and
  * g_dbus_proxy_invoke_method_sync() functions.
  *
- * See the #GDBusProxy:g-dbus-proxy-default-timeout property for more details.
+ * See the #GDBusProxy:g-default-timeout property for more details.
  */
 void
 g_dbus_proxy_set_default_timeout (GDBusProxy *proxy,
@@ -1016,7 +1022,7 @@ g_dbus_proxy_set_default_timeout (GDBusProxy *proxy,
   if (proxy->priv->timeout_msec != timeout_msec)
     {
       proxy->priv->timeout_msec = timeout_msec;
-      g_object_notify (G_OBJECT (proxy), "g-dbus-proxy-default-timeout");
+      g_object_notify (G_OBJECT (proxy), "g-default-timeout");
     }
 }
 

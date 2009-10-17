@@ -103,13 +103,11 @@ proxy_constructed_cb (GObject       *source_object,
                       gpointer       user_data)
 {
   Client *client = user_data;
-  GObject *proxy;
+  GDBusProxy *proxy;
   GError *error;
 
   error = NULL;
-  proxy = g_async_initable_new_finish (G_ASYNC_INITABLE (source_object),
-                                       res,
-                                       &error);
+  proxy = g_dbus_proxy_new_finish (res, &error);
   if (proxy == NULL)
     {
       /* g_warning ("error while constructing proxy: %s", error->message); */
@@ -170,6 +168,16 @@ on_name_appeared (GDBusConnection *connection,
   client->connection = g_object_ref (connection);
   client->cancellable = g_cancellable_new ();
 
+  g_dbus_proxy_new (client->connection,
+                    client->interface_type,
+                    client->proxy_flags,
+                    client->name_owner,
+                    client->object_path,
+                    client->interface_name,
+                    client->cancellable,
+                    proxy_constructed_cb,
+                    client);
+#if 0
   g_async_initable_new_async (client->interface_type,
                               G_PRIORITY_DEFAULT,
                               client->cancellable,
@@ -181,6 +189,7 @@ on_name_appeared (GDBusConnection *connection,
                               "g-dbus-proxy-object-path", client->object_path,
                               "g-dbus-proxy-interface-name", client->interface_name,
                               NULL);
+#endif
 }
 
 static void
