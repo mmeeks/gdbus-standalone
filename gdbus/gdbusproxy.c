@@ -352,7 +352,7 @@ g_dbus_proxy_class_init (GDBusProxyClass *klass)
   /**
    * GDBusProxy::g-signal:
    * @proxy: The #GDBusProxy emitting the signal.
-   * @sender_name: The sender of the signal.
+   * @sender_name: The sender of the signal or %NULL if the connection is not a bus connection.
    * @signal_name: The name of the signal.
    * @parameters: A #GVariant tuple with parameters for the signal.
    *
@@ -630,7 +630,7 @@ initable_init (GInitable       *initable,
                                                      proxy->priv->object_path,
                                                      "org.freedesktop.DBus.Properties",
                                                      "GetAll",
-                                                     g_variant_new_string (proxy->priv->interface_name),
+                                                     g_variant_new ("(s)", proxy->priv->interface_name),
                                                      -1,           /* timeout */
                                                      cancellable,
                                                      error);
@@ -762,7 +762,7 @@ async_initable_iface_init (GAsyncInitableIface *async_initable_iface)
  * @connection: A #GDBusConnection.
  * @object_type: Either #G_TYPE_DBUS_PROXY or the #GType for the #GDBusProxy<!-- -->-derived type of proxy to create.
  * @flags: Flags used when constructing the proxy.
- * @unique_bus_name: A unique bus name.
+ * @unique_bus_name: A unique bus name or %NULL if @connection is not a message bus connection.
  * @object_path: An object path.
  * @interface_name: A D-Bus interface name.
  * @cancellable: A #GCancellable or %NULL.
@@ -797,7 +797,9 @@ g_dbus_proxy_new (GDBusConnection     *connection,
 {
   g_return_if_fail (G_IS_DBUS_CONNECTION (connection));
   g_return_if_fail (g_type_is_a (object_type, G_TYPE_DBUS_PROXY));
-  g_return_if_fail (unique_bus_name != NULL); /* TODO: check that it is unique */
+  /* TODO: check that unique_bus_name is unique */
+  g_return_if_fail ((g_dbus_connection_get_bus_type (connection) == G_BUS_TYPE_NONE && unique_bus_name == NULL) ||
+                    (g_dbus_connection_get_bus_type (connection) != G_BUS_TYPE_NONE || unique_bus_name != NULL));
   g_return_if_fail (object_path != NULL);
   g_return_if_fail (interface_name);
 
@@ -852,7 +854,7 @@ g_dbus_proxy_new_finish (GAsyncResult  *res,
  * @connection: A #GDBusConnection.
  * @object_type: Either #G_TYPE_DBUS_PROXY or the #GType for the #GDBusProxy<!-- -->-derived type of proxy to create.
  * @flags: Flags used when constructing the proxy.
- * @unique_bus_name: A unique bus name.
+ * @unique_bus_name: A unique bus name or %NULL if @connection is not a message bus connection.
  * @object_path: An object path.
  * @interface_name: A D-Bus interface name.
  * @cancellable: A #GCancellable or %NULL.
@@ -885,7 +887,9 @@ g_dbus_proxy_new_sync (GDBusConnection     *connection,
 
   g_return_val_if_fail (G_IS_DBUS_CONNECTION (connection), NULL);
   g_return_val_if_fail (g_type_is_a (object_type, G_TYPE_DBUS_PROXY), NULL);
-  g_return_val_if_fail (unique_bus_name != NULL, NULL); /* TODO: check that it is unique */
+  g_return_val_if_fail ((g_dbus_connection_get_bus_type (connection) == G_BUS_TYPE_NONE && unique_bus_name == NULL) ||
+                        (g_dbus_connection_get_bus_type (connection) != G_BUS_TYPE_NONE || unique_bus_name != NULL),
+                        NULL);
   g_return_val_if_fail (object_path != NULL, NULL);
   g_return_val_if_fail (interface_name, NULL);
 

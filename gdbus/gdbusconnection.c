@@ -51,9 +51,11 @@
 
 struct _GDBusConnectionPrivate
 {
-  /* construct properties */
   DBusConnection *dbus_1_connection;
+
+  /* construct properties */
   GBusType        bus_type;
+  gchar          *address;
   gboolean        is_private;
 
   gboolean is_initialized;
@@ -107,6 +109,7 @@ enum
 {
   PROP_0,
   PROP_BUS_TYPE,
+  PROP_ADDRESS,
   PROP_IS_PRIVATE,
   PROP_UNIQUE_NAME,
   PROP_IS_DISCONNECTED,
@@ -175,6 +178,8 @@ g_dbus_connection_finalize (GObject *object)
   if (connection->priv->initialization_error != NULL)
     g_error_free (connection->priv->initialization_error);
 
+  g_free (connection->priv->address);
+
   purge_all_signal_subscriptions (connection);
   g_hash_table_unref (connection->priv->map_rule_to_signal_data);
   g_hash_table_unref (connection->priv->map_id_to_signal_data);
@@ -201,6 +206,10 @@ g_dbus_connection_get_property (GObject    *object,
     {
     case PROP_BUS_TYPE:
       g_value_set_enum (value, g_dbus_connection_get_bus_type (connection));
+      break;
+
+    case PROP_ADDRESS:
+      g_value_set_string (value, g_dbus_connection_get_address (connection));
       break;
 
     case PROP_IS_PRIVATE:
@@ -233,6 +242,10 @@ g_dbus_connection_set_property (GObject      *object,
     {
     case PROP_BUS_TYPE:
       connection->priv->bus_type = g_value_get_enum (value);
+      break;
+
+    case PROP_ADDRESS:
+      connection->priv->address = g_value_dup_string (value);
       break;
 
     case PROP_IS_PRIVATE:
@@ -270,17 +283,19 @@ g_dbus_connection_class_init (GDBusConnectionClass *klass)
    * When constructing an object, set this to the type of the message bus
    * the connection is for or #G_BUS_TYPE_NONE if the connection is not
    * a message bus connection.
-   * This property is ignored if #GDBusConnection:dbus-1-connection is set upon construction.
    *
    * When reading, this property is never #G_BUS_TYPE_STARTER - if #G_BUS_TYPE_STARTER
    * was passed as a construction property, then this property will be either #G_BUS_TYPE_SESSION
    * or #G_BUS_TYPE_SYSTEM depending on what message bus activated the process.
+   *
+   * This property must be unset on construction if
+   * #GDBusConnection:address is set upon construction.
    */
   g_object_class_install_property (gobject_class,
                                    PROP_BUS_TYPE,
                                    g_param_spec_enum ("bus-type",
                                                       _("bus-type"),
-                                                      _("The type of message bus the connection is for"),
+                                                      _("The type of message bus, if any, the connection is for"),
                                                       G_TYPE_BUS_TYPE,
                                                       G_BUS_TYPE_NONE,
                                                       G_PARAM_READABLE |
@@ -289,6 +304,25 @@ g_dbus_connection_class_init (GDBusConnectionClass *klass)
                                                       G_PARAM_STATIC_NAME |
                                                       G_PARAM_STATIC_BLURB |
                                                       G_PARAM_STATIC_NICK));
+
+  /**
+   * GDBusConnection:address:
+   *
+   * The address of the connection or %NULL if @connection is a
+   * message bus connection.
+   */
+  g_object_class_install_property (gobject_class,
+                                   PROP_ADDRESS,
+                                   g_param_spec_string ("address",
+                                                        _("Address"),
+                                                        _("The address of the connection"),
+                                                        NULL,
+                                                        G_PARAM_READABLE |
+                                                        G_PARAM_WRITABLE |
+                                                        G_PARAM_CONSTRUCT_ONLY |
+                                                        G_PARAM_STATIC_NAME |
+                                                        G_PARAM_STATIC_BLURB |
+                                                        G_PARAM_STATIC_NICK));
 
   /**
    * GDBusConnection:is-private:
@@ -351,7 +385,7 @@ g_dbus_connection_class_init (GDBusConnectionClass *klass)
    * GDBusConnection:exit-on-disconnect:
    *
    * A boolean specifying whether _exit() should be called when the
-   * connection has been disconnected.
+   * connection has been disconnected by the other end.
    */
   g_object_class_install_property (gobject_class,
                                    PROP_EXIT_ON_DISCONNECT,
@@ -441,6 +475,23 @@ g_dbus_connection_get_bus_type (GDBusConnection *connection)
   return connection->priv->bus_type;
 }
 
+/**
+ * g_dbus_connection_get_address:
+ * @connection: A #GDBusConnection.
+ *
+ * Gets the address that @connection was constructed with.
+ *
+ * Returns: The address that @connection was constructed with or %NULL
+ * if a message bus connection. Do not free this string, it is owned
+ * by @connection.
+ */
+const gchar *
+g_dbus_connection_get_address (GDBusConnection *connection)
+{
+  g_return_val_if_fail (G_IS_DBUS_CONNECTION (connection), NULL);
+
+  return connection->priv->address;
+}
 
 /**
  * g_dbus_connection_get_is_disconnected:
@@ -523,11 +574,10 @@ process_message (GDBusConnection *connection,
 {
   DBusError dbus_error;
 
-  //g_debug ("in filter_function for dbus_1_connection %p", dbus_1_connection);
+  //g_debug ("in filter_function for dbus_1_connection %p", connection);
   //PRINT_MESSAGE (message);
 
   dbus_error_init (&dbus_error);
-
   /* check if we are disconnected from the bus */
   if (dbus_message_is_signal (message,
                               DBUS_INTERFACE_LOCAL,
@@ -544,9 +594,11 @@ process_message (GDBusConnection *connection,
           g_signal_emit (connection, signals[DISCONNECTED_SIGNAL], 0);
         }
     }
-
-  /* distribute to signal subscribers */
-  distribute_signals (connection, message);
+  else
+    {
+      /* distribute to signal subscribers */
+      distribute_signals (connection, message);
+    }
 }
 
 static DBusHandlerResult
@@ -562,6 +614,7 @@ filter_function (DBusConnection *dbus_1_connection,
   return DBUS_HANDLER_RESULT_NOT_YET_HANDLED;
 }
 
+/* must be called with lock held */
 static void
 g_dbus_connection_set_dbus_1_connection (GDBusConnection *connection,
                                          DBusConnection  *dbus_1_connection)
@@ -601,6 +654,36 @@ g_dbus_connection_set_dbus_1_connection (GDBusConnection *connection,
     {
       connection->priv->dbus_1_connection = NULL;
     }
+}
+
+/**
+ * g_dbus_connection_disconnect:
+ * @connection: A #GDBusConnection.
+ *
+ * Disconnects @connection. Note that this never causes the process to
+ * exit, #GDBusConnection:exit-on-disconnect is only used if the other
+ * end of the connection disconnects.
+ *
+ * If @connection is already disconnected, this method does nothing.
+ */
+void
+g_dbus_connection_disconnect (GDBusConnection *connection)
+{
+  gboolean emit_signal;
+
+  g_return_if_fail (G_IS_DBUS_CONNECTION (connection));
+
+  G_LOCK (connection_lock);
+  emit_signal = FALSE;
+  if (connection->priv->dbus_1_connection != NULL)
+    {
+      g_dbus_connection_set_dbus_1_connection (connection, NULL);
+      emit_signal = TRUE;
+    }
+  G_UNLOCK (connection_lock);
+
+  if (emit_signal)
+    g_signal_emit (connection, signals[DISCONNECTED_SIGNAL], 0);
 }
 
 /* ---------------------------------------------------------------------------------------------------- */
@@ -729,17 +812,37 @@ initable_init (GInitable       *initable,
   g_assert (connection->priv->dbus_1_connection == NULL);
   g_assert (connection->priv->initialization_error == NULL);
 
+  dbus_connection_set_change_sigpipe (TRUE);
+
   dbus_error_init (&dbus_error);
-  g_assert (connection->priv->bus_type != G_BUS_TYPE_NONE); // until we have constructors with @address
-  if (connection->priv->is_private)
+  if (connection->priv->address != NULL)
     {
-      dbus_1_connection = dbus_bus_get_private (connection->priv->bus_type,
-                                                &dbus_error);
+      g_assert (connection->priv->bus_type == G_BUS_TYPE_NONE); /* API contract */
+
+      if (connection->priv->is_private)
+        {
+          dbus_1_connection = dbus_connection_open_private (connection->priv->address,
+                                                            &dbus_error);
+        }
+      else
+        {
+          dbus_1_connection = dbus_connection_open (connection->priv->address,
+                                                    &dbus_error);
+        }
     }
   else
     {
-      dbus_1_connection = dbus_bus_get (connection->priv->bus_type,
-                                        &dbus_error);
+      g_assert (connection->priv->bus_type != G_BUS_TYPE_NONE); /* API contract */
+      if (connection->priv->is_private)
+        {
+          dbus_1_connection = dbus_bus_get_private (connection->priv->bus_type,
+                                                    &dbus_error);
+        }
+      else
+        {
+          dbus_1_connection = dbus_bus_get (connection->priv->bus_type,
+                                            &dbus_error);
+        }
     }
 
   if (dbus_1_connection != NULL)
@@ -829,6 +932,26 @@ async_initable_iface_init (GAsyncInitableIface *async_initable_iface)
 
 /* ---------------------------------------------------------------------------------------------------- */
 
+GDBusConnection *
+_g_dbus_connection_new_for_dbus_1_connection (DBusConnection  *dbus_1_connection)
+{
+  GDBusConnection *connection;
+
+  connection = G_DBUS_CONNECTION (g_object_new (G_TYPE_DBUS_CONNECTION,
+                                                "is-private", TRUE,
+                                                "exit-on-disconnect", FALSE,
+                                                NULL));
+
+  /* TODO: set address? */
+
+  g_dbus_connection_set_dbus_1_connection (connection, dbus_connection_ref (dbus_1_connection));
+  connection->priv->is_initialized = TRUE;
+
+  return connection;
+}
+
+/* ---------------------------------------------------------------------------------------------------- */
+
 /**
  * g_dbus_connection_bus_get_sync:
  * @bus_type: A #GBusType.
@@ -872,7 +995,7 @@ g_dbus_connection_bus_get_sync (GBusType            bus_type,
  * g_dbus_connection_bus_get:
  * @bus_type: A #GBusType.
  * @cancellable: A #GCancellable or %NULL.
- * @callback: A #GAsyncReadyCallback to call when the request is satisfied
+ * @callback: A #GAsyncReadyCallback to call when the request is satisfied.
  * @user_data: The data to pass to @callback.
  *
  * Asynchronously connects to the message bus specified by @bus_type.
@@ -974,7 +1097,7 @@ g_dbus_connection_bus_get_private_sync (GBusType        bus_type,
  * g_dbus_connection_bus_get_private:
  * @bus_type: A #GBusType.
  * @cancellable: A #GCancellable or %NULL.
- * @callback: A #GAsyncReadyCallback to call when the request is satisfied
+ * @callback: A #GAsyncReadyCallback to call when the request is satisfied.
  * @user_data: The data to pass to @callback.
  *
  * Asynchronously connects to the message bus specified by @bus_type
@@ -1041,12 +1164,119 @@ g_dbus_connection_bus_get_private_finish (GAsyncResult  *res,
 /* ---------------------------------------------------------------------------------------------------- */
 
 /**
+ * g_dbus_connection_new:
+ * @address: The address to connect to. See the D-Bus specification for details on address formats.
+ * @cancellable: A #GCancellable or %NULL.
+ * @callback: A #GAsyncReadyCallback to call when the request is satisfied.
+ * @user_data: The data to pass to @callback.
+ *
+ * Asynchronously creates a private connection to @address.
+ *
+ * When the operation is finished, @callback will be invoked. You can
+ * then call g_dbus_connection_new_finish() to get the result of the
+ * operation.
+ *
+ * This is a asynchronous failable constructor. See
+ * g_dbus_connection_new_sync() for the synchronous
+ * version.
+ */
+void
+g_dbus_connection_new (const gchar         *address,
+                       GCancellable        *cancellable,
+                       GAsyncReadyCallback  callback,
+                       gpointer             user_data)
+{
+  g_async_initable_new_async (G_TYPE_DBUS_CONNECTION,
+                              G_PRIORITY_DEFAULT,
+                              cancellable,
+                              callback,
+                              user_data,
+                              "address", address,
+                              "is-private", TRUE,
+                              "exit-on-disconnect", FALSE,
+                              NULL);
+}
+
+/**
+ * g_dbus_connection_new_finish:
+ * @res: A #GAsyncResult obtained from the #GAsyncReadyCallback passed to g_dbus_connection_new().
+ * @error: Return location for error or %NULL.
+ *
+ * Finishes an operation started with g_dbus_connection_new().
+ *
+ * The returned #GDBusConnection object will have
+ * #GDBusConnection:exit-on-disconnect set to %FALSE.
+ *
+ * Returns: A #GDBusConnection or %NULL if @error is set. Free with g_object_unref().
+ */
+GDBusConnection *
+g_dbus_connection_new_finish (GAsyncResult        *res,
+                              GError             **error)
+{
+  GObject *object;
+  GObject *source_object;
+
+  source_object = g_async_result_get_source_object (res);
+  g_assert (source_object != NULL);
+
+  object = g_async_initable_new_finish (G_ASYNC_INITABLE (source_object),
+                                        res,
+                                        error);
+  g_object_unref (source_object);
+
+  if (object != NULL)
+    return G_DBUS_CONNECTION (object);
+  else
+    return NULL;
+}
+
+/**
+ * g_dbus_connection_new_sync:
+ * @address: The address to connect to. See the D-Bus specification for details on address formats.
+ * @cancellable: A #GCancellable or %NULL.
+ * @error: Return location for error or %NULL.
+ *
+ * Synchronously creates a private connection to @address.
+ *
+ * This is a synchronous failable constructor. See
+ * g_dbus_connection_new() for the asynchronous version.
+ *
+ * The returned #GDBusConnection object will have
+ * #GDBusConnection:exit-on-disconnect set to %FALSE.
+ *
+ * Returns: A #GDBusConnection or %NULL if @error is set. Free with g_object_unref().
+ */
+GDBusConnection *
+g_dbus_connection_new_sync (const gchar         *address,
+                            GCancellable       *cancellable,
+                            GError            **error)
+{
+  GInitable *initable;
+
+  initable = g_initable_new (G_TYPE_DBUS_CONNECTION,
+                             cancellable,
+                             error,
+                             "address", address,
+                             "is-private", TRUE,
+                             "exit-on-disconnect", FALSE,
+                             NULL);
+
+  if (initable != NULL)
+    return G_DBUS_CONNECTION (initable);
+  else
+    return NULL;
+}
+
+/* ---------------------------------------------------------------------------------------------------- */
+
+/**
  * g_dbus_connection_set_exit_on_disconnect:
  * @connection: A #GDBusConnection.
  * @exit_on_disconnect: Whether _exit() should be called when @connection is
- * disconnected.
+ * disconnected by the other end.
  *
- * Sets whether _exit() should be called when @connection is disconnected.
+ * Sets whether _exit() should be called when @connection is
+ * disconnected by the other end.
  **/
 void
 g_dbus_connection_set_exit_on_disconnect (GDBusConnection *connection,
@@ -1643,7 +1873,8 @@ g_dbus_connection_signal_subscribe (GDBusConnection     *connection,
 
   g_return_val_if_fail (G_IS_DBUS_CONNECTION (connection), 0);
   g_return_val_if_fail (!g_dbus_connection_get_is_disconnected (connection), 0);
-  g_return_val_if_fail (sender == NULL || ((strcmp (sender, DBUS_SERVICE_DBUS) == 0 || sender[0] == ':')), 0);
+  g_return_val_if_fail (sender == NULL || ((strcmp (sender, DBUS_SERVICE_DBUS) == 0 || sender[0] == ':') &&
+                                           connection->priv->bus_type != G_BUS_TYPE_NONE), 0);
   g_return_val_if_fail (callback != NULL, 0);
   /* TODO: check that passed in data is well-formed */
 
@@ -1690,8 +1921,13 @@ g_dbus_connection_signal_subscribe (GDBusConnection     *connection,
    * Avoid adding match rules for NameLost and NameAcquired messages - the bus will
    * always send such messages to to us.
    */
-  if (!is_signal_data_for_name_lost_or_acquired (signal_data))
-    add_match_rule (connection, signal_data->rule);
+  if (connection->priv->bus_type != G_BUS_TYPE_NONE)
+    {
+      if (!is_signal_data_for_name_lost_or_acquired (signal_data))
+        {
+          add_match_rule (connection, signal_data->rule);
+        }
+    }
 
  out:
   g_hash_table_insert (connection->priv->map_id_to_signal_data,
@@ -1760,9 +1996,16 @@ unsubscribe_id_internal (GDBusConnection    *connection,
           g_assert (g_hash_table_remove (connection->priv->map_sender_to_signal_data_array, signal_data->sender));
 
           /* remove the match rule from the bus unless NameLost or NameAcquired (see subscribe()) */
-          if (!is_signal_data_for_name_lost_or_acquired (signal_data) &&
-              connection->priv->dbus_1_connection != NULL)
-            remove_match_rule (connection, signal_data->rule);
+          if (connection->priv->bus_type != G_BUS_TYPE_NONE)
+            {
+              if (!is_signal_data_for_name_lost_or_acquired (signal_data))
+                {
+                  if (connection->priv->dbus_1_connection != NULL)
+                    {
+                      remove_match_rule (connection, signal_data->rule);
+                    }
+                }
+            }
 
           signal_data_free (signal_data);
         }
@@ -1916,7 +2159,7 @@ schedule_callbacks (GDBusConnection *connection,
           signal_instance->message = dbus_message_ref (message);
           signal_instance->connection = g_object_ref (connection);
 
-          /* use higher priority that method_reply to ensure signals are handled by method replies */
+          /* use higher priority that method_reply to ensure signals are handled before method replies */
           idle_source = g_idle_source_new ();
           g_source_set_priority (idle_source, G_PRIORITY_HIGH);
           g_source_set_callback (idle_source,
@@ -1938,16 +2181,17 @@ distribute_signals (GDBusConnection *connection,
   GPtrArray *signal_data_array;
 
   sender = dbus_message_get_sender (message);
-  if (sender == NULL)
-    goto out;
 
   G_LOCK (connection_lock);
 
   /* collect subcsribers that match on sender */
-  signal_data_array = g_hash_table_lookup (connection->priv->map_sender_to_signal_data_array, sender);
-  if (signal_data_array != NULL) {
-    schedule_callbacks (connection, signal_data_array, message);
-  }
+  if (sender != NULL)
+    {
+      signal_data_array = g_hash_table_lookup (connection->priv->map_sender_to_signal_data_array, sender);
+      if (signal_data_array != NULL) {
+        schedule_callbacks (connection, signal_data_array, message);
+      }
+    }
 
   /* collect subcsribers not matching on sender */
   signal_data_array = g_hash_table_lookup (connection->priv->map_sender_to_signal_data_array, "");
@@ -1956,9 +2200,6 @@ distribute_signals (GDBusConnection *connection,
   }
 
   G_UNLOCK (connection_lock);
-
-out:
-  ;
 }
 
 /* ---------------------------------------------------------------------------------------------------- */
@@ -2030,7 +2271,6 @@ exported_object_free (ExportedObject *eo)
         _g_dbus_oom ();
     }
   g_free (eo->object_path);
-  g_object_unref (eo->connection);
   g_hash_table_unref (eo->map_if_name_to_ei);
   g_free (eo);
 }
@@ -2751,7 +2991,7 @@ validate_and_maybe_schedule_method_call (GDBusConnection            *connection,
                                              dbus_message_get_path (message),
                                              dbus_message_get_interface (message),
                                              dbus_message_get_member (message),
-                                             g_object_ref (connection),
+                                             connection,
                                              parameters,
                                              user_data);
   g_variant_unref (parameters);
@@ -2940,7 +3180,7 @@ g_dbus_connection_register_object (GDBusConnection            *connection,
 
       eo = g_new0 (ExportedObject, 1);
       eo->object_path = g_strdup (object_path);
-      eo->connection = g_object_ref (connection);
+      eo->connection = connection;
       eo->map_if_name_to_ei = g_hash_table_new_full (g_str_hash,
                                                      g_str_equal,
                                                      NULL,
@@ -3179,7 +3419,8 @@ g_dbus_connection_invoke_method (GDBusConnection    *connection,
   error = NULL;
 
   g_return_if_fail (G_IS_DBUS_CONNECTION (connection));
-  g_return_if_fail (bus_name != NULL);
+  g_return_if_fail ((connection->priv->bus_type == G_BUS_TYPE_NONE && bus_name == NULL) ||
+                    (connection->priv->bus_type != G_BUS_TYPE_NONE && bus_name != NULL));
   g_return_if_fail (object_path != NULL);
   g_return_if_fail (interface_name != NULL);
   g_return_if_fail (method_name != NULL);
@@ -3324,7 +3565,9 @@ g_dbus_connection_invoke_method_sync (GDBusConnection    *connection,
   result = NULL;
 
   g_return_val_if_fail (G_IS_DBUS_CONNECTION (connection), NULL);
-  g_return_val_if_fail (bus_name != NULL, NULL);
+  g_return_val_if_fail ((connection->priv->bus_type == G_BUS_TYPE_NONE && bus_name == NULL) ||
+                        (connection->priv->bus_type != G_BUS_TYPE_NONE && bus_name != NULL),
+                        NULL);
   g_return_val_if_fail (object_path != NULL, NULL);
   g_return_val_if_fail (interface_name != NULL, NULL);
   g_return_val_if_fail (method_name != NULL, NULL);
@@ -3396,7 +3639,6 @@ exported_subtree_free (ExportedSubtree *es)
       g_main_context_unref (es->context);
     }
   g_free (es->object_path);
-  g_object_unref (es->connection);
   g_free (es);
 }
 
@@ -3875,7 +4117,7 @@ g_dbus_connection_register_subtree (GDBusConnection            *connection,
 
   es = g_new0 (ExportedSubtree, 1);
   es->object_path = g_strdup (object_path);
-  es->connection = g_object_ref (connection);
+  es->connection = connection;
 
   dbus_error_init (&dbus_error);
   if (!dbus_connection_try_register_fallback (connection->priv->dbus_1_connection,

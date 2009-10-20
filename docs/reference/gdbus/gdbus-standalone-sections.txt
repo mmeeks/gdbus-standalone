@@ -4,6 +4,9 @@
 GBusType
 GDBusConnection
 GDBusConnectionClass
+g_dbus_connection_new
+g_dbus_connection_new_finish
+g_dbus_connection_new_sync
 g_dbus_connection_bus_get
 g_dbus_connection_bus_get_finish
 g_dbus_connection_bus_get_sync
@@ -11,10 +14,12 @@ g_dbus_connection_bus_get_private
 g_dbus_connection_bus_get_private_finish
 g_dbus_connection_bus_get_private_sync
 g_dbus_connection_get_bus_type
+g_dbus_connection_get_address
 g_dbus_connection_get_unique_name
 g_dbus_connection_get_is_private
 g_dbus_connection_get_is_disconnected
 g_dbus_connection_set_exit_on_disconnect
+g_dbus_connection_disconnect
 g_dbus_connection_emit_signal
 g_dbus_connection_invoke_method
 g_dbus_connection_invoke_method_finish
@@ -163,4 +168,21 @@ g_dbus_node_info_new_for_xml
 g_dbus_node_info_lookup_interface
 g_dbus_node_info_free
 g_dbus_node_info_generate_xml
+</SECTION>
+
+<SECTION>
+<FILE>gdbusserver</FILE>
+<TITLE>GDBusServer</TITLE>
+GDBusServer
+GDBusServerClass
+g_dbus_server_new
+g_dbus_server_get_address
+<SUBSECTION Standard>
+G_DBUS_SERVER
+G_IS_DBUS_SERVER
+G_TYPE_DBUS_SERVER
+g_dbus_server_get_type
+G_DBUS_SERVER_CLASS
+G_IS_DBUS_SERVER_CLASS
+G_DBUS_SERVER_GET_CLASS
 </SECTION>

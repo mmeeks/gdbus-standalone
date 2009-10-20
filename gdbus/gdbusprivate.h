@@ -45,6 +45,8 @@ void _g_dbus_unintegrate_dbus_1_server     (DBusServer   *server);
 void _g_dbus_connection_send_dbus_1_message (GDBusConnection    *connection,
                                              DBusMessage        *message);
 
+GDBusConnection *_g_dbus_connection_new_for_dbus_1_connection (DBusConnection *dbus_1_connection);
+
 G_END_DECLS
 
 #endif /* __G_DBUS_PRIVATE_H__ */

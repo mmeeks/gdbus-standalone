@@ -185,7 +185,7 @@ g_dbus_method_invocation_class_init (GDBusMethodInvocationClass *klass)
   /**
    * GDBusMethodInvocation:sender:
    *
-   * The bus name that invoked the method.
+   * The bus name that invoked the method or %NULL if the connection is not a bus connection.
    */
   g_object_class_install_property (gobject_class,
                                    PROP_SENDER,
@@ -425,7 +425,7 @@ g_dbus_method_invocation_get_user_data (GDBusMethodInvocation *invocation)
 
 /**
  * g_dbus_method_invocation_new:
- * @sender: The bus name that invoked the method.
+ * @sender: The bus name that invoked the method or %NULL if @connection is not a bus connection.
  * @object_path: The object path the method was invoked on.
  * @interface_name: The name of the D-Bus interface the method was invoked on.
  * @method_name: The name of the method that was invoked.
@@ -446,12 +446,13 @@ g_dbus_method_invocation_new (const gchar      *sender,
                               GVariant         *parameters,
                               gpointer          user_data)
 {
-  g_return_val_if_fail (sender != NULL, NULL);
   g_return_val_if_fail (object_path != NULL, NULL);
   g_return_val_if_fail (interface_name != NULL, NULL);
   g_return_val_if_fail (method_name != NULL, NULL);
   g_return_val_if_fail (G_IS_DBUS_CONNECTION (connection), NULL);
   g_return_val_if_fail (parameters != NULL, NULL);
+  g_return_val_if_fail ((g_dbus_connection_get_bus_type (connection) == G_BUS_TYPE_NONE && sender == NULL) ||
+                        (g_dbus_connection_get_bus_type (connection) != G_BUS_TYPE_NONE && sender != NULL), NULL);
 
   return G_DBUS_METHOD_INVOCATION (g_object_new (G_TYPE_DBUS_METHOD_INVOCATION,
                                                  "sender", sender,

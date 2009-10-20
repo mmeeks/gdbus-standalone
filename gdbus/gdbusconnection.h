@@ -84,6 +84,16 @@ struct _GDBusConnectionClass
 
 GType            g_dbus_connection_get_type                   (void) G_GNUC_CONST;
 
+void             g_dbus_connection_new                        (const gchar         *address,
+                                                               GCancellable        *cancellable,
+                                                               GAsyncReadyCallback  callback,
+                                                               gpointer             user_data);
+GDBusConnection *g_dbus_connection_new_finish                 (GAsyncResult        *res,
+                                                               GError             **error);
+GDBusConnection *g_dbus_connection_new_sync                   (const gchar         *address,
+                                                               GCancellable       *cancellable,
+                                                               GError            **error);
+
 void             g_dbus_connection_bus_get                    (GBusType             bus_type,
                                                                GCancellable        *cancellable,
                                                                GAsyncReadyCallback  callback,
@@ -104,11 +114,13 @@ GDBusConnection *g_dbus_connection_bus_get_private_sync       (GBusType         
                                                                GCancellable       *cancellable,
                                                                GError            **error);
 GBusType         g_dbus_connection_get_bus_type               (GDBusConnection    *connection);
+const gchar     *g_dbus_connection_get_address                (GDBusConnection    *connection);
 const gchar     *g_dbus_connection_get_unique_name            (GDBusConnection    *connection);
 gboolean         g_dbus_connection_get_is_private             (GDBusConnection    *connection);
 gboolean         g_dbus_connection_get_is_disconnected        (GDBusConnection    *connection);
 void             g_dbus_connection_set_exit_on_disconnect     (GDBusConnection    *connection,
                                                                gboolean            exit_on_disconnect);
+void             g_dbus_connection_disconnect                 (GDBusConnection    *connection);
 
 /**
  * GDBusInterfaceMethodCallFunc:

@@ -20,6 +20,7 @@
         <xi:include href="xml/gdbusconnection.xml"/>
         <xi:include href="xml/gdbusmethodinvocation.xml"/>
         <xi:include href="xml/gdbusproxy.xml"/>
+        <xi:include href="xml/gdbusserver.xml"/>
     </chapter>
     <chapter id="convenience">
         <title>GDBus Convenience</title>

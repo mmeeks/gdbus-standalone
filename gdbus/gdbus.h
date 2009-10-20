@@ -35,6 +35,7 @@
 #include <gdbus/gdbusproxy.h>
 #include <gdbus/gdbusintrospection.h>
 #include <gdbus/gdbusmethodinvocation.h>
+#include <gdbus/gdbusserver.h>
 
 #undef __G_DBUS_G_DBUS_H_INSIDE__
 

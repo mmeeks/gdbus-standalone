@@ -43,6 +43,7 @@ gdbus_headers =				\
 	gdbusproxy.h			\
 	gdbusintrospection.h		\
 	gdbusmethodinvocation.h		\
+	gdbusserver.h			\
 	$(NULL)
 
 libgdbus_standalone_la_SOURCES =					\
@@ -61,6 +62,7 @@ libgdbus_standalone_la_SOURCES =					\
 	gdbusintrospection.h		gdbusintrospection.c		\
 	gdbusconversion.h		gdbusconversion.c		\
 	gdbusmethodinvocation.h		gdbusmethodinvocation.c		\
+	gdbusserver.h			gdbusserver.c			\
 	$(NULL)
 
 $(libgdbus_standalone_la_OBJECTS): $(marshal_sources)
