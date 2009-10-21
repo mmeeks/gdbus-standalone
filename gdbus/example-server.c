@@ -14,6 +14,9 @@ static const gchar introspection_xml[] =
   "      <arg type='s' name='greeting' direction='in'/>"
   "      <arg type='s' name='response' direction='out'/>"
   "    </method>"
+  "    <method name='EmitSignal'>"
+  "      <arg type='d' name='speed_in_mph' direction='in'/>"
+  "    </method>"
   "    <signal name='VelocityChanged'>"
   "      <arg type='d' name='speed_in_mph'/>"
   "      <arg type='s' name='speed_as_string'/>"
@@ -23,6 +26,8 @@ static const gchar introspection_xml[] =
   "    <property type='s' name='ReadingAlwaysThrowsError' access='read'/>"
   "    <property type='s' name='WritingAlwaysThrowsError' access='readwrite'/>"
   "    <property type='s' name='OnlyWritable' access='write'/>"
+  "    <property type='s' name='Foo' access='read'/>"
+  "    <property type='s' name='Bar' access='read'/>"
   "  </interface>"
   "</node>";
 
@@ -73,9 +78,35 @@ handle_method_call (GDBusConnection       *connection,
           g_free (response);
         }
     }
+  else if (g_strcmp0 (method_name, "EmitSignal") == 0)
+    {
+      GError *local_error;
+      gdouble speed_in_mph;
+      gchar *speed_as_string;
+
+      g_variant_get (parameters, "(d)", &speed_in_mph);
+      speed_as_string = g_strdup_printf ("%g mph!", speed_in_mph);
+
+      local_error = NULL;
+      g_dbus_connection_emit_signal (connection,
+                                     NULL,
+                                     object_path,
+                                     interface_name,
+                                     "VelocityChanged",
+                                     g_variant_new ("(ds)",
+                                                    speed_in_mph,
+                                                    speed_as_string),
+                                     &local_error);
+      g_assert_no_error (local_error);
+      g_free (speed_as_string);
+
+      g_dbus_method_invocation_return_value (invocation, NULL);
+    }
 }
 
 static gchar *_global_title = NULL;
+
+static gboolean swap_a_and_b = FALSE;
 
 static GVariant *
 handle_get_property (GDBusConnection  *connection,
@@ -112,6 +143,14 @@ handle_get_property (GDBusConnection  *connection,
     {
       ret = g_variant_new_string ("There's no home like home");
     }
+  else if (g_strcmp0 (property_name, "Foo") == 0)
+    {
+      ret = g_variant_new_string (swap_a_and_b ? "Tock" : "Tick");
+    }
+  else if (g_strcmp0 (property_name, "Bar") == 0)
+    {
+      ret = g_variant_new_string (swap_a_and_b ? "Tick" : "Tock");
+    }
 
   return ret;
 }
@@ -128,8 +167,31 @@ handle_set_property (GDBusConnection  *connection,
 {
   if (g_strcmp0 (property_name, "Title") == 0)
     {
-      g_free (_global_title);
-      _global_title = g_variant_dup_string (value, NULL);
+      if (g_strcmp0 (_global_title, g_variant_get_string (value, NULL)) != 0)
+        {
+          GVariantBuilder *builder;
+          GError *local_error;
+
+          g_free (_global_title);
+          _global_title = g_variant_dup_string (value, NULL);
+
+          local_error = NULL;
+          builder = g_variant_builder_new (G_VARIANT_TYPE_CLASS_ARRAY, NULL);
+          g_variant_builder_add (builder,
+                                 "{sv}",
+                                 "Title",
+                                 g_variant_new_string (_global_title));
+          g_dbus_connection_emit_signal (connection,
+                                         NULL,
+                                         object_path,
+                                         "org.freedesktop.DBus.Properties",
+                                         "PropertiesChanged",
+                                         g_variant_new ("(sa{sv})",
+                                                        interface_name,
+                                                        builder),
+                                         &local_error);
+          g_assert_no_error (local_error);
+        }
     }
   else if (g_strcmp0 (property_name, "ReadingAlwaysThrowsError") == 0)
     {
@@ -159,6 +221,40 @@ static const GDBusInterfaceVTable interface_vtable =
 
 /* ---------------------------------------------------------------------------------------------------- */
 
+static gboolean
+on_timeout_cb (gpointer user_data)
+{
+  GDBusConnection *connection = G_DBUS_CONNECTION (user_data);
+  GVariantBuilder *builder;
+  GError *error;
+
+  swap_a_and_b = !swap_a_and_b;
+
+  error = NULL;
+  builder = g_variant_builder_new (G_VARIANT_TYPE_CLASS_ARRAY, NULL);
+  g_variant_builder_add (builder,
+                         "{sv}",
+                         "Foo",
+                         g_variant_new_string (swap_a_and_b ? "Tock" : "Tick"));
+  g_variant_builder_add (builder,
+                         "{sv}",
+                         "Bar",
+                         g_variant_new_string (swap_a_and_b ? "Tick" : "Tock"));
+  g_dbus_connection_emit_signal (connection,
+                                 NULL,
+                                 "/org/gtk/GDBus/TestObject",
+                                 "org.freedesktop.DBus.Properties",
+                                 "PropertiesChanged",
+                                 g_variant_new ("(sa{sv})",
+                                                "org.gtk.GDBus.TestInterface",
+                                                builder),
+                                 &error);
+  g_assert_no_error (error);
+
+
+  return TRUE;
+}
+
 static void
 on_name_acquired (GDBusConnection *connection,
                   const gchar     *name,
@@ -175,6 +271,11 @@ on_name_acquired (GDBusConnection *connection,
                                                        NULL,  /* user_data_free_func */
                                                        NULL); /* GError** */
   g_assert (registration_id > 0);
+
+  /* swap value of properties Foo and Bar every two seconds */
+  g_timeout_add_seconds (2,
+                         on_timeout_cb,
+                         connection);
 }
 
 static void

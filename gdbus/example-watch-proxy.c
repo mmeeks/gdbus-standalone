@@ -28,12 +28,9 @@ print_properties (GDBusProxy *proxy)
       const gchar *key = property_names[n];
       GVariant *value;
       gchar *value_str;
-
       value = g_dbus_proxy_get_cached_property (proxy, key, NULL);
       value_str = g_variant_print (value, TRUE);
-
       g_print ("      %s -> %s\n", key, value_str);
-
       g_variant_unref (value);
       g_free (value_str);
     }
@@ -45,7 +42,36 @@ on_properties_changed (GDBusProxy *proxy,
                        GHashTable *changed_properties,
                        gpointer    user_data)
 {
-  print_properties (proxy);
+  GHashTableIter iter;
+  const gchar *key;
+  GVariant *value;
+
+  g_print (" *** Properties Changed:\n");
+
+  g_hash_table_iter_init (&iter, changed_properties);
+  while (g_hash_table_iter_next (&iter, (gpointer) &key, (gpointer) &value))
+    {
+      gchar *value_str;
+      value_str = g_variant_print (value, TRUE);
+      g_print ("      %s -> %s\n", key, value_str);
+      g_free (value_str);
+    }
+}
+
+static void
+on_signal (GDBusProxy *proxy,
+           gchar      *sender_name,
+           gchar      *signal_name,
+           GVariant   *parameters,
+           gpointer    user_data)
+{
+  gchar *parameters_str;
+
+  parameters_str = g_variant_print (parameters, TRUE);
+  g_print (" *** Received Signal: %s: %s\n",
+           signal_name,
+           parameters_str);
+  g_free (parameters_str);
 }
 
 static void
@@ -71,6 +97,11 @@ on_proxy_appeared (GDBusConnection *connection,
   g_signal_connect (proxy,
                     "g-properties-changed",
                     G_CALLBACK (on_properties_changed),
+                    NULL);
+
+  g_signal_connect (proxy,
+                    "g-signal",
+                    G_CALLBACK (on_signal),
                     NULL);
 }
 
@@ -102,12 +133,11 @@ main (int argc, char *argv[])
 
   opt_context = g_option_context_new ("g_bus_watch_proxy() example");
   g_option_context_set_summary (opt_context,
-                                "Example: to watch the manager object of DeviceKit-disks daemon, use:\n"
+                                "Example: to watch the object of example-server, use:\n"
                                 "\n"
-                                "  ./example-watch-proxy -n org.freedesktop.DeviceKit.Disks  \\\n"
-                                "                        -o /org/freedesktop/DeviceKit/Disks \\\n"
-                                "                        -i org.freedesktop.DeviceKit.Disks  \\\n"
-                                "                        --system-bus");
+                                "  ./example-watch-proxy -n org.gtk.GDBus.TestServer  \\\n"
+                                "                        -o /org/gtk/GDBus/TestObject \\\n"
+                                "                        -i org.gtk.GDBus.TestInterface");
   g_option_context_add_main_entries (opt_context, opt_entries, NULL);
   error = NULL;
   if (!g_option_context_parse (opt_context, &argc, &argv, &error))
