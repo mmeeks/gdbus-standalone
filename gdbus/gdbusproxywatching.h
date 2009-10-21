@@ -71,7 +71,8 @@ guint g_bus_watch_proxy   (GBusType                   bus_type,
                            GDBusProxyFlags            proxy_flags,
                            GBusProxyAppearedCallback  proxy_appeared_handler,
                            GBusProxyVanishedCallback  proxy_vanished_handler,
-                           gpointer                   user_data);
+                           gpointer                   user_data,
+                           GDestroyNotify             user_data_free_func);
 void  g_bus_unwatch_proxy (guint                      watcher_id);
 
 G_END_DECLS

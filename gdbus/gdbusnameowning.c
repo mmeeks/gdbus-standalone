@@ -62,6 +62,8 @@ typedef struct
   GBusNameAcquiredCallback  name_acquired_handler;
   GBusNameLostCallback      name_lost_handler;
   gpointer                  user_data;
+  GDestroyNotify            user_data_free_func;
+  GMainContext             *main_context;
 
   PreviousCall              previous_call;
 
@@ -101,12 +103,110 @@ client_unref (Client *client)
             g_dbus_connection_signal_unsubscribe (client->connection, client->name_lost_subscription_id);
           g_object_unref (client->connection);
         }
+      if (client->main_context != NULL)
+        g_main_context_unref (client->main_context);
       g_free (client->name);
+      if (client->user_data_free_func != NULL)
+        client->user_data_free_func (client->user_data);
       g_free (client);
     }
 }
 
+static gboolean
+schedule_unref_in_idle_cb (gpointer data)
+{
+  Client *client = data;
+  client_unref (client);
+  return FALSE;
+}
+
+static void
+schedule_unref_in_idle (Client *client)
+{
+  GSource *idle_source;
+
+  idle_source = g_idle_source_new ();
+  g_source_set_priority (idle_source, G_PRIORITY_HIGH);
+  g_source_set_callback (idle_source,
+                         schedule_unref_in_idle_cb,
+                         client_ref (client),
+                         (GDestroyNotify) client_unref);
+  g_source_attach (idle_source, client->main_context);
+  g_source_unref (idle_source);
+}
+
 /* ---------------------------------------------------------------------------------------------------- */
+
+typedef struct
+{
+  Client *client;
+
+  /* keep this separate because client->connection may
+   * be set to NULL after scheduling the call
+   */
+  GDBusConnection *connection;
+
+  /* set to TRUE to call acquired */
+  gboolean call_acquired;
+} CallHandlerData;
+
+static void
+call_handler_data_free (CallHandlerData *data)
+{
+  if (data->connection != NULL)
+    g_object_unref (data->connection);
+  client_unref (data->client);
+  g_free (data);
+}
+
+static gboolean
+call_in_idle_cb (gpointer _data)
+{
+  CallHandlerData *data = _data;
+
+  if (data->call_acquired)
+    {
+      if (data->client->name_acquired_handler != NULL)
+        {
+          data->client->name_acquired_handler (data->connection,
+                                               data->client->name,
+                                               data->client->user_data);
+        }
+    }
+  else
+    {
+      if (data->client->name_lost_handler != NULL)
+        {
+          data->client->name_lost_handler (data->connection,
+                                           data->client->name,
+                                           data->client->user_data);
+        }
+    }
+
+  return FALSE;
+}
+
+static void
+schedule_call_in_idle (Client *client,
+                       gboolean call_acquired)
+{
+  CallHandlerData *data;
+  GSource *idle_source;
+
+  data = g_new0 (CallHandlerData, 1);
+  data->client = client_ref (client);
+  data->connection = client->connection != NULL ? g_object_ref (client->connection) : NULL;
+  data->call_acquired = call_acquired;
+
+  idle_source = g_idle_source_new ();
+  g_source_set_priority (idle_source, G_PRIORITY_HIGH);
+  g_source_set_callback (idle_source,
+                         call_in_idle_cb,
+                         data,
+                         (GDestroyNotify) call_handler_data_free);
+  g_source_attach (idle_source, client->main_context);
+  g_source_unref (idle_source);
+}
 
 static void
 call_acquired_handler (Client *client)
@@ -114,11 +214,9 @@ call_acquired_handler (Client *client)
   if (client->previous_call != PREVIOUS_CALL_ACQUIRED)
     {
       client->previous_call = PREVIOUS_CALL_ACQUIRED;
-      if (!client->cancelled && client->name_acquired_handler != NULL)
+      if (!client->cancelled)
         {
-          client->name_acquired_handler (client->connection,
-                                         client->name,
-                                         client->user_data);
+          schedule_call_in_idle (client, TRUE);
         }
     }
 }
@@ -130,11 +228,9 @@ call_lost_handler (Client  *client,
   if (client->previous_call != PREVIOUS_CALL_LOST)
     {
       client->previous_call = PREVIOUS_CALL_LOST;
-      if (((!client->cancelled) || ignore_cancelled) && client->name_lost_handler != NULL)
+      if ((!client->cancelled) || ignore_cancelled)
         {
-          client->name_lost_handler (client->connection,
-                                     client->name,
-                                     client->user_data);
+          schedule_call_in_idle (client, FALSE);
         }
     }
 }
@@ -337,6 +433,7 @@ connection_get_cb (GObject      *source_object,
  * @name_acquired_handler: Handler to invoke when @name is acquired.
  * @name_lost_handler: Handler to invoke when @name is lost.
  * @user_data: User data to pass to handlers.
+ * @user_data_free_func: Function for freeing @user_data or %NULL.
  *
  * Like g_bus_own_name() but takes a #GDBusConnection instead of a
  * #GBusType.
@@ -350,7 +447,8 @@ g_bus_own_name_on_connection (GDBusConnection          *connection,
                               GBusNameOwnerFlags        flags,
                               GBusNameAcquiredCallback  name_acquired_handler,
                               GBusNameLostCallback      name_lost_handler,
-                              gpointer                  user_data)
+                              gpointer                  user_data,
+                              GDestroyNotify            user_data_free_func)
 {
   Client *client;
 
@@ -371,6 +469,11 @@ g_bus_own_name_on_connection (GDBusConnection          *connection,
   client->name_acquired_handler = name_acquired_handler;
   client->name_lost_handler = name_lost_handler;
   client->user_data = user_data;
+  client->user_data_free_func = user_data_free_func;
+  client->main_context = g_main_context_get_thread_default ();
+  if (client->main_context != NULL)
+    g_main_context_ref (client->main_context);
+
   client->connection = g_object_ref (connection);
 
   if (map_id_to_client == NULL)
@@ -396,15 +499,17 @@ g_bus_own_name_on_connection (GDBusConnection          *connection,
  * @name_acquired_handler: Handler to invoke when @name is acquired.
  * @name_lost_handler: Handler to invoke when @name is lost.
  * @user_data: User data to pass to handlers.
+ * @user_data_free_func: Function for freeing @user_data or %NULL.
  *
  * Starts acquiring @name on the bus specified by @bus_type and calls
  * @name_acquired_handler and @name_lost_handler when the name is
- * acquired respectively lost.
+ * acquired respectively lost. Callbacks will be invoked in the <link
+ * linkend="g-main-context-push-thread-default">thread-default main
+ * loop</link> of the thread you are calling this function from.
  *
- * You are guaranteed that one of the handlers will be invoked (on the
- * main thread) after calling this function. When you are done owning
- * the name, just call g_bus_unown_name() with the owner id this
- * function returns.
+ * You are guaranteed that one of the handlers will be invoked after
+ * calling this function. When you are done owning the name, just call
+ * g_bus_unown_name() with the owner id this function returns.
  *
  * If the name is acquired or lost (for example another application
  * could acquire the name if you allow replacement), the handlers are
@@ -436,7 +541,8 @@ g_bus_own_name (GBusType                  bus_type,
                 GBusNameOwnerFlags        flags,
                 GBusNameAcquiredCallback  name_acquired_handler,
                 GBusNameLostCallback      name_lost_handler,
-                gpointer                  user_data)
+                gpointer                  user_data,
+                GDestroyNotify            user_data_free_func)
 {
   Client *client;
 
@@ -456,6 +562,10 @@ g_bus_own_name (GBusType                  bus_type,
   client->name_acquired_handler = name_acquired_handler;
   client->name_lost_handler = name_lost_handler;
   client->user_data = user_data;
+  client->user_data_free_func = user_data_free_func;
+  client->main_context = g_main_context_get_thread_default ();
+  if (client->main_context != NULL)
+    g_main_context_ref (client->main_context);
 
   if (map_id_to_client == NULL)
     {
@@ -481,8 +591,7 @@ g_bus_own_name (GBusType                  bus_type,
  * Stops owning a name.
  *
  * If currently owning the name (e.g. @name_acquired_handler was the
- * last handler to be invoked), then @name_lost_handler will be invoked
- * before this function returns.
+ * last handler to be invoked), then @name_lost_handler will be invoked.
  **/
 void
 g_bus_unown_name (guint owner_id)
@@ -565,6 +674,6 @@ g_bus_unown_name (guint owner_id)
           call_lost_handler (client, TRUE);
         }
 
-      client_unref (client);
+      schedule_unref_in_idle (client);
     }
 }

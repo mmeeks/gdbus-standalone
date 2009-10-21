@@ -38,7 +38,15 @@ typedef struct
   gboolean expect_null_connection;
   guint num_acquired;
   guint num_lost;
+  guint num_free_func;
 } OwnNameData;
+
+static void
+own_name_data_free_func (OwnNameData *data)
+{
+  data->num_free_func++;
+  g_main_loop_quit (loop);
+}
 
 static void
 name_acquired_handler (GDBusConnection *connection,
@@ -92,6 +100,7 @@ test_bus_own_name (void)
    *
    * Also make sure name_lost_handler() isn't invoked when unowning the name.
    */
+  data.num_free_func = 0;
   data.num_acquired = 0;
   data.num_lost = 0;
   data.expect_null_connection = TRUE;
@@ -100,7 +109,8 @@ test_bus_own_name (void)
                        G_BUS_NAME_OWNER_FLAGS_NONE,
                        name_acquired_handler,
                        name_lost_handler,
-                       &data);
+                       &data,
+                       (GDestroyNotify) own_name_data_free_func);
   g_assert_cmpint (data.num_acquired, ==, 0);
   g_assert_cmpint (data.num_lost,     ==, 0);
   g_main_loop_run (loop);
@@ -109,6 +119,8 @@ test_bus_own_name (void)
   g_bus_unown_name (id);
   g_assert_cmpint (data.num_acquired, ==, 0);
   g_assert_cmpint (data.num_lost,     ==, 1);
+  g_main_loop_run (loop);
+  g_assert_cmpint (data.num_free_func, ==, 1);
 
   /**
    * Bring up a bus, then own a name and check name_acquired_handler() is invoked.
@@ -122,7 +134,8 @@ test_bus_own_name (void)
                        G_BUS_NAME_OWNER_FLAGS_NONE,
                        name_acquired_handler,
                        name_lost_handler,
-                       &data);
+                       &data,
+                       (GDestroyNotify) own_name_data_free_func);
   g_assert_cmpint (data.num_acquired, ==, 0);
   g_assert_cmpint (data.num_lost,     ==, 0);
   g_main_loop_run (loop);
@@ -151,19 +164,15 @@ test_bus_own_name (void)
   g_variant_unref (result);
 
   /**
-   * Stop owning the name - this should trigger name_lost_handler() because of this
-   * guarantee
-   *
-   *   If currently owning the name (e.g. @name_acquired_handler was the
-   *   last handler to be invoked), then @name_lost_handler will be invoked
-   *   before this function returns.
-   *
-   * in g_bus_unown_name().
+   * Stop owning the name - this should trigger name_lost_handler()
+   * (in an idle handler) from g_bus_unown_name().
    */
   data.expect_null_connection = FALSE;
   g_bus_unown_name (id);
+  g_main_loop_run (loop);
   g_assert_cmpint (data.num_acquired, ==, 1);
   g_assert_cmpint (data.num_lost,     ==, 1);
+  g_assert_cmpint (data.num_free_func, ==, 2);
 
   /**
    * Check that the name was actually relased.
@@ -194,7 +203,8 @@ test_bus_own_name (void)
                        G_BUS_NAME_OWNER_FLAGS_NONE,
                        name_acquired_handler,
                        name_lost_handler,
-                       &data);
+                       &data,
+                       (GDestroyNotify) own_name_data_free_func);
   g_assert_cmpint (data.num_acquired, ==, 0);
   g_assert_cmpint (data.num_lost,     ==, 0);
   g_main_loop_run (loop);
@@ -205,6 +215,7 @@ test_bus_own_name (void)
    * Try owning the name with another object on the same connection  - this should
    * fail because we already own the name.
    */
+  data2.num_free_func = 0;
   data2.num_acquired = 0;
   data2.num_lost = 0;
   data2.expect_null_connection = FALSE;
@@ -213,7 +224,8 @@ test_bus_own_name (void)
                         G_BUS_NAME_OWNER_FLAGS_NONE,
                         name_acquired_handler,
                         name_lost_handler,
-                        &data2);
+                        &data2,
+                        (GDestroyNotify) own_name_data_free_func);
   g_assert_cmpint (data2.num_acquired, ==, 0);
   g_assert_cmpint (data2.num_lost,     ==, 0);
   g_main_loop_run (loop);
@@ -222,6 +234,8 @@ test_bus_own_name (void)
   g_bus_unown_name (id2);
   g_assert_cmpint (data2.num_acquired, ==, 0);
   g_assert_cmpint (data2.num_lost,     ==, 1);
+  g_main_loop_run (loop);
+  g_assert_cmpint (data2.num_free_func, ==, 1);
 
   /**
    * Create a secondary (e.g. private) connection and try owning the name on that
@@ -235,12 +249,14 @@ test_bus_own_name (void)
   data2.num_acquired = 0;
   data2.num_lost = 0;
   data2.expect_null_connection = FALSE;
+  data2.num_free_func = 0;
   id2 = g_bus_own_name_on_connection (c2,
                                       name,
                                       G_BUS_NAME_OWNER_FLAGS_NONE,
                                       name_acquired_handler,
                                       name_lost_handler,
-                                      &data2);
+                                      &data2,
+                                      (GDestroyNotify) own_name_data_free_func);
   g_assert_cmpint (data2.num_acquired, ==, 0);
   g_assert_cmpint (data2.num_lost,     ==, 0);
   g_main_loop_run (loop);
@@ -249,16 +265,20 @@ test_bus_own_name (void)
   g_bus_unown_name (id2);
   g_assert_cmpint (data2.num_acquired, ==, 0);
   g_assert_cmpint (data2.num_lost,     ==, 1);
+  g_main_loop_run (loop);
+  g_assert_cmpint (data2.num_free_func, ==, 1);
   /* then with _REPLACE */
   data2.num_acquired = 0;
   data2.num_lost = 0;
   data2.expect_null_connection = FALSE;
+  data2.num_free_func = 0;
   id2 = g_bus_own_name_on_connection (c2,
                                       name,
                                       G_BUS_NAME_OWNER_FLAGS_REPLACE,
                                       name_acquired_handler,
                                       name_lost_handler,
-                                      &data2);
+                                      &data2,
+                                      (GDestroyNotify) own_name_data_free_func);
   g_assert_cmpint (data2.num_acquired, ==, 0);
   g_assert_cmpint (data2.num_lost,     ==, 0);
   g_main_loop_run (loop);
@@ -267,14 +287,18 @@ test_bus_own_name (void)
   g_bus_unown_name (id2);
   g_assert_cmpint (data2.num_acquired, ==, 0);
   g_assert_cmpint (data2.num_lost,     ==, 1);
+  g_main_loop_run (loop);
+  g_assert_cmpint (data2.num_free_func, ==, 1);
 
   /**
    * Stop owning the name and grab it again with _ALLOW_REPLACEMENT.
    */
   data.expect_null_connection = FALSE;
   g_bus_unown_name (id);
+  g_main_loop_run (loop);
   g_assert_cmpint (data.num_acquired, ==, 1);
   g_assert_cmpint (data.num_lost,     ==, 1);
+  g_assert_cmpint (data.num_free_func, ==, 3);
   /* grab it again */
   data.num_acquired = 0;
   data.num_lost = 0;
@@ -284,7 +308,8 @@ test_bus_own_name (void)
                        G_BUS_NAME_OWNER_FLAGS_ALLOW_REPLACEMENT,
                        name_acquired_handler,
                        name_lost_handler,
-                       &data);
+                       &data,
+                       (GDestroyNotify) own_name_data_free_func);
   g_assert_cmpint (data.num_acquired, ==, 0);
   g_assert_cmpint (data.num_lost,     ==, 0);
   g_main_loop_run (loop);
@@ -299,12 +324,14 @@ test_bus_own_name (void)
   data2.num_acquired = 0;
   data2.num_lost = 0;
   data2.expect_null_connection = FALSE;
+  data2.num_free_func = 0;
   id2 = g_bus_own_name_on_connection (c2,
                                       name,
                                       G_BUS_NAME_OWNER_FLAGS_NONE,
                                       name_acquired_handler,
                                       name_lost_handler,
-                                      &data2);
+                                      &data2,
+                                      (GDestroyNotify) own_name_data_free_func);
   g_assert_cmpint (data2.num_acquired, ==, 0);
   g_assert_cmpint (data2.num_lost,     ==, 0);
   g_main_loop_run (loop);
@@ -313,17 +340,21 @@ test_bus_own_name (void)
   g_bus_unown_name (id2);
   g_assert_cmpint (data2.num_acquired, ==, 0);
   g_assert_cmpint (data2.num_lost,     ==, 1);
+  g_main_loop_run (loop);
+  g_assert_cmpint (data2.num_free_func, ==, 1);
   /* then with _REPLACE - here we should acquire the name - e.g. owner should lose it
    * and owner2 should acquire it  */
   data2.num_acquired = 0;
   data2.num_lost = 0;
   data2.expect_null_connection = FALSE;
+  data2.num_free_func = 0;
   id2 = g_bus_own_name_on_connection (c2,
                                       name,
                                       G_BUS_NAME_OWNER_FLAGS_REPLACE,
                                       name_acquired_handler,
                                       name_lost_handler,
-                                      &data2);
+                                      &data2,
+                                      (GDestroyNotify) own_name_data_free_func);
   g_assert_cmpint (data.num_acquired, ==, 1);
   g_assert_cmpint (data.num_lost,     ==, 0);
   g_assert_cmpint (data2.num_acquired, ==, 0);
@@ -337,9 +368,11 @@ test_bus_own_name (void)
   g_assert_cmpint (data2.num_lost,     ==, 0);
   /* ok, make owner2 release the name - then wait for owner to automagically reacquire it */
   g_bus_unown_name (id2);
+  g_main_loop_run (loop);
   g_assert_cmpint (data2.num_acquired, ==, 1);
   g_assert_cmpint (data2.num_lost,     ==, 1);
   g_main_loop_run (loop);
+  g_assert_cmpint (data2.num_free_func, ==, 1);
   g_assert_cmpint (data.num_acquired, ==, 2);
   g_assert_cmpint (data.num_lost,     ==, 1);
 
@@ -353,6 +386,8 @@ test_bus_own_name (void)
   g_assert_cmpint (data.num_acquired, ==, 2);
   g_assert_cmpint (data.num_lost,     ==, 2);
   g_bus_unown_name (id);
+  g_main_loop_run (loop);
+  g_assert_cmpint (data.num_free_func, ==, 4);
 
   g_object_unref (c);
   g_object_unref (c2);
@@ -369,7 +404,15 @@ typedef struct
   guint num_lost;
   guint num_appeared;
   guint num_vanished;
+  guint num_free_func;
 } WatchNameData;
+
+static void
+watch_name_data_free_func (WatchNameData *data)
+{
+  data->num_free_func++;
+  g_main_loop_quit (loop);
+}
 
 static void
 w_name_acquired_handler (GDBusConnection *connection,
@@ -442,6 +485,7 @@ test_bus_watch_name (void)
    *
    * Also make sure name_vanished_handler() isn't invoked when unwatching the name.
    */
+  data.num_free_func = 0;
   data.num_appeared = 0;
   data.num_vanished = 0;
   data.expect_null_connection = TRUE;
@@ -449,7 +493,8 @@ test_bus_watch_name (void)
                          "org.gtk.GDBus.Name1",
                          name_appeared_handler,
                          name_vanished_handler,
-                         &data);
+                         &data,
+                         (GDestroyNotify) watch_name_data_free_func);
   g_assert_cmpint (data.num_appeared, ==, 0);
   g_assert_cmpint (data.num_vanished, ==, 0);
   g_main_loop_run (loop);
@@ -458,12 +503,15 @@ test_bus_watch_name (void)
   g_bus_unwatch_name (id);
   g_assert_cmpint (data.num_appeared, ==, 0);
   g_assert_cmpint (data.num_vanished, ==, 1);
+  g_main_loop_run (loop);
+  g_assert_cmpint (data.num_free_func, ==, 1);
 
   /**
    * Now bring up a bus, own a name, and then start watching it.
    */
   session_bus_up ();
   /* own the name */
+  data.num_free_func = 0;
   data.num_acquired = 0;
   data.num_lost = 0;
   data.expect_null_connection = FALSE;
@@ -472,7 +520,8 @@ test_bus_watch_name (void)
                              G_BUS_NAME_OWNER_FLAGS_NONE,
                              w_name_acquired_handler,
                              w_name_lost_handler,
-                             &data);
+                             &data,
+                             (GDestroyNotify) watch_name_data_free_func);
   g_main_loop_run (loop);
   g_assert_cmpint (data.num_acquired, ==, 1);
   g_assert_cmpint (data.num_lost,     ==, 0);
@@ -483,7 +532,8 @@ test_bus_watch_name (void)
                          "org.gtk.GDBus.Name1",
                          name_appeared_handler,
                          name_vanished_handler,
-                         &data);
+                         &data,
+                         (GDestroyNotify) watch_name_data_free_func);
   g_assert_cmpint (data.num_appeared, ==, 0);
   g_assert_cmpint (data.num_vanished, ==, 0);
   g_main_loop_run (loop);
@@ -501,13 +551,17 @@ test_bus_watch_name (void)
    * in g_bus_unwatch_name().
    */
   g_bus_unwatch_name (id);
+  g_main_loop_run (loop);
   g_assert_cmpint (data.num_appeared, ==, 1);
   g_assert_cmpint (data.num_vanished, ==, 1);
+  g_assert_cmpint (data.num_free_func, ==, 1);
 
   /* unown the name */
   g_bus_unown_name (owner_id);
+  g_main_loop_run (loop);
   g_assert_cmpint (data.num_acquired, ==, 1);
   g_assert_cmpint (data.num_lost,     ==, 1);
+  g_assert_cmpint (data.num_free_func, ==, 2);
 
   /**
    * Create a watcher and then make a name be owned.
@@ -517,11 +571,13 @@ test_bus_watch_name (void)
   /* watch the name */
   data.num_appeared = 0;
   data.num_vanished = 0;
+  data.num_free_func = 0;
   id = g_bus_watch_name (G_BUS_TYPE_SESSION,
                          "org.gtk.GDBus.Name1",
                          name_appeared_handler,
                          name_vanished_handler,
-                         &data);
+                         &data,
+                         (GDestroyNotify) watch_name_data_free_func);
   g_assert_cmpint (data.num_appeared, ==, 0);
   g_assert_cmpint (data.num_vanished, ==, 0);
   g_main_loop_run (loop);
@@ -537,7 +593,8 @@ test_bus_watch_name (void)
                              G_BUS_NAME_OWNER_FLAGS_NONE,
                              w_name_acquired_handler,
                              w_name_lost_handler,
-                             &data);
+                             &data,
+                             (GDestroyNotify) watch_name_data_free_func);
   g_main_loop_run (loop);
   g_main_loop_run (loop);
   g_assert_cmpint (data.num_acquired, ==, 1);
@@ -555,7 +612,12 @@ test_bus_watch_name (void)
   g_assert_cmpint (data.num_vanished, ==, 2);
 
   g_bus_unwatch_name (id);
+  g_main_loop_run (loop);
+  g_assert_cmpint (data.num_free_func, ==, 1);
+
   g_bus_unown_name (owner_id);
+  g_main_loop_run (loop);
+  g_assert_cmpint (data.num_free_func, ==, 2);
 
 }
 

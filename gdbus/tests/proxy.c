@@ -350,6 +350,7 @@ test_proxy (void)
                                   G_DBUS_PROXY_FLAGS_NONE,
                                   on_proxy_appeared,
                                   on_proxy_vanished,
+                                  NULL,
                                   NULL);
 
   /* this is safe; testserver will exit once the bus goes away */

@@ -121,6 +121,7 @@ test_introspection_parser (void)
                                   G_DBUS_PROXY_FLAGS_NONE,
                                   introspection_on_proxy_appeared,
                                   introspection_on_proxy_vanished,
+                                  NULL,
                                   NULL);
 
   /* TODO: wait a bit for the bus to come up.. ideally session_bus_up() won't return

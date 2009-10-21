@@ -61,13 +61,15 @@ guint g_bus_own_name                 (GBusType                  bus_type,
                                       GBusNameOwnerFlags        flags,
                                       GBusNameAcquiredCallback  name_acquired_handler,
                                       GBusNameLostCallback      name_lost_handler,
-                                      gpointer                  user_data);
+                                      gpointer                  user_data,
+                                      GDestroyNotify            user_data_free_func);
 guint g_bus_own_name_on_connection   (GDBusConnection          *connection,
                                       const gchar              *name,
                                       GBusNameOwnerFlags        flags,
                                       GBusNameAcquiredCallback  name_acquired_handler,
                                       GBusNameLostCallback      name_lost_handler,
-                                      gpointer                  user_data);
+                                      gpointer                  user_data,
+                                      GDestroyNotify            user_data_free_func);
 void  g_bus_unown_name               (guint                     owner_id);
 
 G_END_DECLS

@@ -465,6 +465,7 @@ test_method_calls_in_thread (void)
                                   G_DBUS_PROXY_FLAGS_NONE,
                                   on_proxy_appeared,
                                   on_proxy_vanished,
+                                  NULL,
                                   NULL);
 
   g_main_loop_run (loop);

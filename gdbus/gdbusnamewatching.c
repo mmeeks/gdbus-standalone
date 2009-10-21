@@ -62,6 +62,8 @@ typedef struct
   GBusNameAppearedCallback  name_appeared_handler;
   GBusNameVanishedCallback  name_vanished_handler;
   gpointer                  user_data;
+  GDestroyNotify            user_data_free_func;
+  GMainContext             *main_context;
 
   GDBusConnection          *connection;
   gulong                    disconnected_signal_handler_id;
@@ -98,11 +100,115 @@ client_unref (Client *client)
         }
       g_free (client->name);
       g_free (client->name_owner);
+      if (client->main_context != NULL)
+        g_main_context_unref (client->main_context);
+      if (client->user_data_free_func != NULL)
+        client->user_data_free_func (client->user_data);
       g_free (client);
     }
 }
 
+static gboolean
+schedule_unref_in_idle_cb (gpointer data)
+{
+  Client *client = data;
+  client_unref (client);
+  return FALSE;
+}
+
+static void
+schedule_unref_in_idle (Client *client)
+{
+  GSource *idle_source;
+
+  idle_source = g_idle_source_new ();
+  g_source_set_priority (idle_source, G_PRIORITY_HIGH);
+  g_source_set_callback (idle_source,
+                         schedule_unref_in_idle_cb,
+                         client_ref (client),
+                         (GDestroyNotify) client_unref);
+  g_source_attach (idle_source, client->main_context);
+  g_source_unref (idle_source);
+}
+
 /* ---------------------------------------------------------------------------------------------------- */
+
+typedef struct
+{
+  Client *client;
+
+  /* keep this separate because client->connection may
+   * be set to NULL after scheduling the call
+   */
+  GDBusConnection *connection;
+
+  /* ditto */
+  gchar *name_owner;
+
+  /* set to TRUE to call appeared */
+  gboolean call_appeared;
+} CallHandlerData;
+
+static void
+call_handler_data_free (CallHandlerData *data)
+{
+  if (data->connection != NULL)
+    g_object_unref (data->connection);
+  g_free (data->name_owner);
+  client_unref (data->client);
+  g_free (data);
+}
+
+static gboolean
+call_in_idle_cb (gpointer _data)
+{
+  CallHandlerData *data = _data;
+
+  if (data->call_appeared)
+    {
+      if (data->client->name_appeared_handler != NULL)
+        {
+          data->client->name_appeared_handler (data->connection,
+                                               data->client->name,
+                                               data->name_owner,
+                                               data->client->user_data);
+        }
+    }
+  else
+    {
+      if (data->client->name_vanished_handler != NULL)
+        {
+          data->client->name_vanished_handler (data->connection,
+                                               data->client->name,
+                                               data->client->user_data);
+        }
+    }
+
+  return FALSE;
+}
+
+static void
+schedule_call_in_idle (Client *client,
+                       gboolean call_appeared)
+{
+  CallHandlerData *data;
+  GSource *idle_source;
+
+  data = g_new0 (CallHandlerData, 1);
+  data->client = client_ref (client);
+  data->connection = client->connection != NULL ? g_object_ref (client->connection) : NULL;
+  data->name_owner = g_strdup (client->name_owner);
+  data->call_appeared = call_appeared;
+
+  idle_source = g_idle_source_new ();
+  g_source_set_priority (idle_source, G_PRIORITY_HIGH);
+  g_source_set_callback (idle_source,
+                         call_in_idle_cb,
+                         data,
+                         (GDestroyNotify) call_handler_data_free);
+  g_source_attach (idle_source, client->main_context);
+  g_source_unref (idle_source);
+}
 
 static void
 call_appeared_handler (Client *client)
@@ -112,10 +218,7 @@ call_appeared_handler (Client *client)
       client->previous_call = PREVIOUS_CALL_APPEARED;
       if (!client->cancelled && client->name_appeared_handler != NULL)
         {
-          client->name_appeared_handler (client->connection,
-                                         client->name,
-                                         client->name_owner,
-                                         client->user_data);
+          schedule_call_in_idle (client, TRUE);
         }
     }
 }
@@ -129,9 +232,7 @@ call_vanished_handler (Client  *client,
       client->previous_call = PREVIOUS_CALL_VANISHED;
       if (((!client->cancelled) || ignore_cancelled) && client->name_vanished_handler != NULL)
         {
-          client->name_vanished_handler (client->connection,
-                                         client->name,
-                                         client->user_data);
+          schedule_call_in_idle (client, FALSE);
         }
     }
 }
@@ -314,15 +415,19 @@ connection_get_cb (GObject      *source_object,
  * @name_appeared_handler: Handler to invoke when @name is known to exist.
  * @name_vanished_handler: Handler to invoke when @name is known to not exist.
  * @user_data: User data to pass to handlers.
+ * @user_data_free_func: Function for freeing @user_data or %NULL.
  *
  * Starts watching @name on the bus specified by @bus_type and calls
  * @name_appeared_handler and @name_vanished_handler when the name is
- * known to have a owner respectively known to lose its owner.
+ * known to have a owner respectively known to lose its
+ * owner. Callbacks will be invoked in the <link
+ * linkend="g-main-context-push-thread-default">thread-default main
+ * loop</link> of the thread you are calling this function from.
  *
- * You are guaranteed that one of the handlers will be invoked (on the
- * main thread) after calling this function. When you are done
- * watching the name, just call g_bus_unwatch_name() with the watcher
- * id this function returns.
+ * You are guaranteed that one of the handlers will be invoked after
+ * calling this function. When you are done watching the name, just
+ * call g_bus_unwatch_name() with the watcher id this function
+ * returns.
  *
  * If the name vanishes or appears (for example the application owning
  * the name could restart), the handlers are also invoked. If the
@@ -350,7 +455,8 @@ g_bus_watch_name (GBusType                  bus_type,
                   const gchar              *name,
                   GBusNameAppearedCallback  name_appeared_handler,
                   GBusNameVanishedCallback  name_vanished_handler,
-                  gpointer                  user_data)
+                  gpointer                  user_data,
+                  GDestroyNotify            user_data_free_func)
 {
   Client *client;
 
@@ -368,6 +474,10 @@ g_bus_watch_name (GBusType                  bus_type,
   client->name_appeared_handler = name_appeared_handler;
   client->name_vanished_handler = name_vanished_handler;
   client->user_data = user_data;
+  client->user_data_free_func = user_data_free_func;
+  client->main_context = g_main_context_get_thread_default ();
+  if (client->main_context != NULL)
+    g_main_context_ref (client->main_context);
 
   if (map_id_to_client == NULL)
     {
@@ -394,8 +504,7 @@ g_bus_watch_name (GBusType                  bus_type,
  * Stops watching a name.
  *
  * If the name being watched currently has an owner the name (e.g. @name_appeared_handler
- * was the last handler to be invoked), then @name_vanished_handler will be invoked
- * before this function returns.
+ * was the last handler to be invoked), then @name_vanished_handler will be invoked.
  **/
 void
 g_bus_unwatch_name (guint watcher_id)
@@ -423,6 +532,6 @@ g_bus_unwatch_name (guint watcher_id)
   if (client != NULL)
     {
       call_vanished_handler (client, TRUE);
-      client_unref (client);
+      schedule_unref_in_idle (client);
     }
 }

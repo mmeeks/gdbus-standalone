@@ -65,6 +65,7 @@ main (int argc, char *argv[])
                              flags,
                              on_name_acquired,
                              on_name_lost,
+                             NULL,
                              NULL);
 
   loop = g_main_loop_new (NULL, FALSE);

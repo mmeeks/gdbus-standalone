@@ -88,7 +88,8 @@ main (int argc, char *argv[])
                                   G_DBUS_PROXY_FLAGS_NONE,
                                   on_proxy_appeared,
                                   on_proxy_vanished,
-                                  NULL); /* user_data */
+                                  NULL,
+                                  NULL);
 
   loop = g_main_loop_new (NULL, FALSE);
   g_main_loop_run (loop);

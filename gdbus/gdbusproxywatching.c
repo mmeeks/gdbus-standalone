@@ -55,44 +55,84 @@ static GHashTable *map_id_to_client = NULL;
 
 typedef struct
 {
-  guint        id;
+  volatile gint              ref_count;
+  guint                      id;
+  GBusProxyAppearedCallback  proxy_appeared_handler;
+  GBusProxyVanishedCallback  proxy_vanished_handler;
+  gpointer                   user_data;
+  GDestroyNotify             user_data_free_func;
+  GMainContext              *main_context;
 
-  GBusProxyAppearedCallback proxy_appeared_handler;
-  GBusProxyVanishedCallback proxy_vanished_handler;
-  gpointer user_data;
+  gchar                     *name;
+  gchar                     *name_owner;
+  GDBusConnection           *connection;
+  guint                      name_watcher_id;
 
-  gchar *name;
-  gchar *name_owner;
-  GDBusConnection *connection;
-  guint name_watcher_id;
+  GCancellable              *cancellable;
 
-  GCancellable *cancellable;
-
-  gchar          *object_path;
-  gchar          *interface_name;
-  GType           interface_type;
-  GDBusProxyFlags proxy_flags;
-  GDBusProxy     *proxy;
+  gchar                     *object_path;
+  gchar                     *interface_name;
+  GType                      interface_type;
+  GDBusProxyFlags            proxy_flags;
+  GDBusProxy                *proxy;
 
   gboolean initial_construction;
 } Client;
 
-static void
-client_free (Client *client)
+static Client *
+client_ref (Client *client)
 {
-  /* this will trigger on_name_vanished that will free the proxy if applicable */
-  g_bus_unwatch_name (client->name_watcher_id);
+  g_atomic_int_inc (&client->ref_count);
+  return client;
+}
 
-  /* we can do this because on_name_vanished() will have cleared these */
-  g_assert (client->name_owner == NULL);
-  g_assert (client->connection == NULL);
-  g_assert (client->proxy == NULL);
+static void
+client_unref (Client *client)
+{
+  if (g_atomic_int_dec_and_test (&client->ref_count))
+    {
+      /* ensure we're only called from g_bus_unwatch_proxy */
+      g_assert (client->name_watcher_id == 0);
 
-  g_free (client->name);
-  g_free (client->object_path);
-  g_free (client->interface_name);
+      /* we can do this because on_name_vanished() will have cleared these */
+      g_assert (client->name_owner == NULL);
+      g_assert (client->connection == NULL);
+      g_assert (client->proxy == NULL);
 
-  g_free (client);
+      g_free (client->name);
+      g_free (client->object_path);
+      g_free (client->interface_name);
+
+      if (client->main_context != NULL)
+        g_main_context_unref (client->main_context);
+
+      if (client->user_data_free_func != NULL)
+        client->user_data_free_func (client->user_data);
+      g_free (client);
+    }
+}
+
+static gboolean
+schedule_unref_in_idle_cb (gpointer data)
+{
+  Client *client = data;
+  client_unref (client);
+  return FALSE;
+}
+
+static void
+schedule_unref_in_idle (Client *client)
+{
+  GSource *idle_source;
+
+  idle_source = g_idle_source_new ();
+  g_source_set_priority (idle_source, G_PRIORITY_HIGH);
+  g_source_set_callback (idle_source,
+                         schedule_unref_in_idle_cb,
+                         client_ref (client),
+                         (GDestroyNotify) client_unref);
+  g_source_attach (idle_source, client->main_context);
+  g_source_unref (idle_source);
 }
 
 /* ---------------------------------------------------------------------------------------------------- */
@@ -177,19 +217,6 @@ on_name_appeared (GDBusConnection *connection,
                     client->cancellable,
                     proxy_constructed_cb,
                     client);
-#if 0
-  g_async_initable_new_async (client->interface_type,
-                              G_PRIORITY_DEFAULT,
-                              client->cancellable,
-                              proxy_constructed_cb,
-                              client,
-                              "g-dbus-proxy-flags", client->proxy_flags,
-                              "g-dbus-proxy-unique-bus-name", client->name_owner,
-                              "g-dbus-proxy-connection", client->connection,
-                              "g-dbus-proxy-object-path", client->object_path,
-                              "g-dbus-proxy-interface-name", client->interface_name,
-                              NULL);
-#endif
 }
 
 static void
@@ -267,6 +294,7 @@ on_name_vanished (GDBusConnection *connection,
  * @proxy_vanished_handler: Handler to invoke when @name is known to not exist
  * and the previously created proxy is no longer available.
  * @user_data: User data to pass to handlers.
+ * @user_data_free_func: Function for freeing @user_data or %NULL.
  *
  * Starts watching a remote object at @object_path owned by @name on
  * the bus specified by @bus_type. When the object is available, a
@@ -280,7 +308,10 @@ on_name_vanished (GDBusConnection *connection,
  * to watch a well-known remote object on a well-known name, see <xref
  * linkend="gdbus-watching-proxy"/>. Basically, the application simply
  * starts using the proxy when @proxy_appeared_handler is called and
- * stops using it when @proxy_vanished_handler is called.
+ * stops using it when @proxy_vanished_handler is called. Callbacks
+ * will be invoked in the <link
+ * linkend="g-main-context-push-thread-default">thread-default main
+ * loop</link> of the thread you are calling this function from.
  *
  * Applications typically use this function to watch the
  * <quote>manager</quote> object of a well-known name. Upon acquiring
@@ -306,7 +337,8 @@ g_bus_watch_proxy (GBusType                   bus_type,
                    GDBusProxyFlags            proxy_flags,
                    GBusProxyAppearedCallback  proxy_appeared_handler,
                    GBusProxyVanishedCallback  proxy_vanished_handler,
-                   gpointer                   user_data)
+                   gpointer                   user_data,
+                   GDestroyNotify             user_data_free_func)
 {
   Client *client;
 
@@ -326,11 +358,16 @@ g_bus_watch_proxy (GBusType                   bus_type,
   client->proxy_appeared_handler = proxy_appeared_handler;
   client->proxy_vanished_handler = proxy_vanished_handler;
   client->user_data = user_data;
+  client->user_data_free_func = user_data_free_func;
+  client->main_context = g_main_context_get_thread_default ();
+  if (client->main_context != NULL)
+    g_main_context_ref (client->main_context);
   client->name_watcher_id = g_bus_watch_name (bus_type,
                                               name,
                                               on_name_appeared,
                                               on_name_vanished,
-                                              client);
+                                              client,
+                                              NULL);
 
   client->object_path = g_strdup (object_path);
   client->interface_name = g_strdup (interface_name);
@@ -385,6 +422,10 @@ g_bus_unwatch_proxy (guint watcher_id)
   /* TODO: think about this: this will trigger callbacks from the name_watcher object being used */
   if (client != NULL)
     {
-      client_free (client);
+      /* this will trigger on_name_vanished() */
+      g_bus_unwatch_name (client->name_watcher_id);
+      client->name_watcher_id = 0;
+      /* this will happen *after* on_name_vanished() */
+      schedule_unref_in_idle (client);
     }
 }

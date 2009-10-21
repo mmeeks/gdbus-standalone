@@ -64,6 +64,7 @@ main (int argc, char *argv[])
                                  opt_name,
                                  on_name_appeared,
                                  on_name_vanished,
+                                 NULL,
                                  NULL);
 
   loop = g_main_loop_new (NULL, FALSE);
