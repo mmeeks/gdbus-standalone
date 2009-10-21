@@ -15,6 +15,40 @@ static GOptionEntry opt_entries[] =
 };
 
 static void
+print_properties (GDBusProxy *proxy)
+{
+  gchar **property_names;
+  guint n;
+
+  g_print ("    properties:\n");
+
+  property_names = g_dbus_proxy_get_cached_property_names (proxy, NULL);
+  for (n = 0; property_names != NULL && property_names[n] != NULL; n++)
+    {
+      const gchar *key = property_names[n];
+      GVariant *value;
+      gchar *value_str;
+
+      value = g_dbus_proxy_get_cached_property (proxy, key, NULL);
+      value_str = g_variant_print (value, TRUE);
+
+      g_print ("      %s -> %s\n", key, value_str);
+
+      g_variant_unref (value);
+      g_free (value_str);
+    }
+  g_strfreev (property_names);
+}
+
+static void
+on_properties_changed (GDBusProxy *proxy,
+                       GHashTable *changed_properties,
+                       gpointer    user_data)
+{
+  print_properties (proxy);
+}
+
+static void
 on_proxy_appeared (GDBusConnection *connection,
                    const gchar     *name,
                    const gchar     *name_owner,
@@ -31,6 +65,13 @@ on_proxy_appeared (GDBusConnection *connection,
            opt_name,
            opt_object_path,
            opt_interface);
+
+  print_properties (proxy);
+
+  g_signal_connect (proxy,
+                    "g-properties-changed",
+                    G_CALLBACK (on_properties_changed),
+                    NULL);
 }
 
 static void

@@ -384,10 +384,58 @@ g_dbus_proxy_init (GDBusProxy *proxy)
 /* ---------------------------------------------------------------------------------------------------- */
 
 /**
+ * g_dbus_proxy_get_cached_property_names:
+ * @proxy: A #GDBusProxy.
+ * @error: Return location for error or %NULL.
+ *
+ * Gets the names of all cached properties on @proxy.
+ *
+ * Returns: A %NULL-terminated array of strings or %NULL if @error is set. Free with
+ * g_strfreev().
+ */
+gchar **
+g_dbus_proxy_get_cached_property_names (GDBusProxy          *proxy,
+                                        GError             **error)
+{
+  gchar **names;
+  GPtrArray *p;
+  GHashTableIter iter;
+  const gchar *key;
+
+  g_return_val_if_fail (G_IS_DBUS_PROXY (proxy), NULL);
+
+  names = NULL;
+
+  if (proxy->priv->flags & G_DBUS_PROXY_FLAGS_DO_NOT_LOAD_PROPERTIES)
+    {
+      g_set_error (error,
+                   G_DBUS_ERROR,
+                   G_DBUS_ERROR_FAILED,
+                   _("Properties are not available (proxy created with G_DBUS_PROXY_FLAGS_DO_NOT_LOAD_PROPERTIES)"));
+      goto out;
+    }
+
+  p = g_ptr_array_new ();
+
+  g_hash_table_iter_init (&iter, proxy->priv->properties);
+  while (g_hash_table_iter_next (&iter, (gpointer) &key, NULL))
+    {
+      g_ptr_array_add (p, g_strdup (key));
+    }
+  g_ptr_array_sort (p, (GCompareFunc) g_strcmp0);
+  g_ptr_array_add (p, NULL);
+
+  names = (gchar **) g_ptr_array_free (p, FALSE);
+
+ out:
+  return names;
+}
+
+/**
  * g_dbus_proxy_get_cached_property:
  * @proxy: A #GDBusProxy.
  * @property_name: Property name.
- * @error: Return location for error.
+ * @error: Return location for error or %NULL.
  *
  * Looks up the value for a property from the cache. This call does no blocking IO.
  *
@@ -401,7 +449,7 @@ g_dbus_proxy_init (GDBusProxy *proxy)
  *
  * Returns: A reference to the #GVariant instance that holds the value for @property_name or
  * %NULL if @error is set. Free the reference with g_variant_unref().
- **/
+ */
 GVariant *
 g_dbus_proxy_get_cached_property (GDBusProxy          *proxy,
                                   const gchar         *property_name,
