@@ -131,6 +131,73 @@ static const GDBusInterfaceInfo bar_interface_info =
   NULL,
 };
 
+/* -------------------- */
+
+static const GDBusMethodInfo dyna_method_info[] =
+{
+  {
+    "DynaCyber",
+    "", 0, NULL,
+    "", 0, NULL,
+    NULL
+  }
+};
+
+static const GDBusSignalInfo dyna_signal_info[] =
+{
+  
+};
+
+static const GDBusPropertyInfo dyna_property_info[] =
+{
+  
+};
+
+static const GDBusInterfaceInfo dyna_interface_info =
+{
+  "org.example.Dyna",
+  1,    /* 1 method*/
+  dyna_method_info,
+  0,    /* 0 signals */
+  NULL,
+  0,    /* 0 properties */
+  NULL,
+  NULL,
+};
+
+static void
+dyna_cyber (GDBusConnection *connection,
+            gpointer user_data,
+            const gchar *sender,
+            const gchar *object_path,
+            const gchar *interface_name,
+            const gchar *method_name,
+            GVariant *parameters,
+            GDBusMethodInvocation *invocation)
+{
+  GPtrArray *data = user_data;
+  char *node_name = strrchr (object_path, '/') + 1;
+  guint n;
+  
+  /* Add new node if it is not already known */  
+  for (n = 0; n < data->len ; n++)
+    {
+      if (g_strcmp0 (g_ptr_array_index (data, n), node_name) == 0)
+        goto out;
+    }
+  g_ptr_array_add (data, g_strdup(node_name));
+
+  out:
+    g_dbus_method_invocation_return_value (invocation, NULL);
+}
+
+static const GDBusInterfaceVTable dyna_interface_vtable =
+{
+  dyna_cyber,
+  NULL,
+  NULL
+};
+
 /* ---------------------------------------------------------------------------------------------------- */
 
 static void
@@ -381,6 +448,7 @@ subtree_enumerate (GDBusConnection       *connection,
   return nodes;
 }
 
+/* Only allows certain objects, and aborts on unknowns */
 static GPtrArray *
 subtree_introspect (GDBusConnection       *connection,
                     gpointer               user_data,
@@ -435,12 +503,71 @@ static const GDBusSubtreeVTable subtree_vtable =
 
 /* -------------------- */
 
+static gchar **
+dynamic_subtree_enumerate (GDBusConnection       *connection,
+                           gpointer               user_data,
+                           const gchar           *sender,
+                           const gchar           *object_path)
+{
+  GPtrArray *data = user_data;
+  gchar **nodes = g_new (gchar*, data->len + 1);
+  guint n;
+  
+  for (n = 0; n < data->len; n++)
+    {
+      nodes[n] = g_strdup (g_ptr_array_index (data, n));
+    }
+  nodes[data->len] = NULL;
+
+  return nodes;
+}
+
+/* Allow all objects to be introspected */
+static GPtrArray *
+dynamic_subtree_introspect (GDBusConnection       *connection,
+                            gpointer               user_data,
+                            const gchar           *sender,
+                            const gchar           *object_path,
+                            const gchar           *node)
+{
+  GPtrArray *interfaces;
+
+  /* All nodes (including the root node) implements the Dyna interface */
+  interfaces = g_ptr_array_new ();
+  g_ptr_array_add (interfaces, (gpointer) &dyna_interface_info);
+
+  return interfaces;
+}
+
+static const GDBusInterfaceVTable *
+dynamic_subtree_dispatch (GDBusConnection             *connection,
+                          gpointer                     user_data,
+                          const gchar                 *sender,
+                          const gchar                 *object_path,
+                          const gchar                 *interface_name,
+                          const gchar                 *node,
+                          gpointer                    *out_user_data)
+{
+  *out_user_data = user_data;
+  return &dyna_interface_vtable;
+}
+
+static const GDBusSubtreeVTable dynamic_subtree_vtable =
+{
+  dynamic_subtree_enumerate,
+  dynamic_subtree_introspect,
+  dynamic_subtree_dispatch
+};
+
+/* -------------------- */
+
 static void
 test_object_registration (void)
 {
   GDBusConnection *c;
   GError *error;
   ObjectRegistrationData data;
+  GPtrArray *dyna_data;
   gchar **nodes;
   guint boss_foo_reg_id;
   guint boss_bar_reg_id;
@@ -454,6 +581,7 @@ test_object_registration (void)
   guint subtree_registration_id;
   guint non_subtree_object_path_foo_reg_id;
   guint non_subtree_object_path_bar_reg_id;
+  guint dyna_subtree_registration_id;
   guint num_successful_registrations;
   DBusConnection *dc;
   DBusError dbus_error;
@@ -714,7 +842,41 @@ test_object_registration (void)
   non_subtree_object_path_foo_reg_id = registration_id;
   num_successful_registrations++;
 
+  /* now register a dynamic subtree, spawning objects as they are called */
+  dyna_data = g_ptr_array_new ();
+  dyna_subtree_registration_id = g_dbus_connection_register_subtree (c,
+                                                                     "/foo/dyna",
+                                                                     &dynamic_subtree_vtable,
+                                                                     G_DBUS_SUBTREE_FLAGS_DISPATCH_TO_UNENUMERATED_NODES,
+                                                                     dyna_data,
+                                                                     (GDestroyNotify)g_ptr_array_unref,
+                                                                     &error);
+  g_assert_no_error (error);
+  g_assert (dyna_subtree_registration_id > 0);
 
+  /* First assert that we have no nodes in the dynamic subtree */
+  nodes = get_nodes_at (c, "/foo/dyna");
+  g_assert (nodes != NULL);
+  g_assert_cmpint (g_strv_length (nodes), ==, 0);
+  g_strfreev (nodes);
+  g_assert_cmpint (count_interfaces (c, "/foo/dyna"), ==, 4);
+
+  /* Install three nodes in the dynamic subtree via the backdoor and
+   * assert that they show up correctly in the introspection data */
+  g_ptr_array_add (dyna_data, "lol");
+  g_ptr_array_add (dyna_data, "cat");
+  g_ptr_array_add (dyna_data, "cheezburger");
+  nodes = get_nodes_at (c, "/foo/dyna");
+  g_assert (nodes != NULL);
+  g_assert_cmpint (g_strv_length (nodes), ==, 3);
+  g_assert_cmpstr (nodes[0], ==, "lol");
+  g_assert_cmpstr (nodes[1], ==, "cat");
+  g_assert_cmpstr (nodes[2], ==, "cheezburger");
+  g_strfreev (nodes);
+  g_assert_cmpint (count_interfaces (c, "/foo/dyna/lol"), ==, 4);
+  g_assert_cmpint (count_interfaces (c, "/foo/dyna/cat"), ==, 4);
+  g_assert_cmpint (count_interfaces (c, "/foo/dyna/cheezburger"), ==, 4);
+  
   /* now check that the object hierarachy is properly generated... yes, it's a bit
    * perverse that we round-trip to the bus to introspect ourselves ;-)
    */
@@ -727,8 +889,9 @@ test_object_registration (void)
 
   nodes = get_nodes_at (c, "/foo");
   g_assert (nodes != NULL);
-  g_assert_cmpint (g_strv_length (nodes), ==, 1);
+  g_assert_cmpint (g_strv_length (nodes), ==, 2);
   g_assert_cmpstr (nodes[0], ==, "boss");
+  g_assert_cmpstr (nodes[1], ==, "dyna");
   g_strfreev (nodes);
   g_assert_cmpint (count_interfaces (c, "/foo"), ==, 0);
 
@@ -842,6 +1005,10 @@ test_object_registration (void)
   g_strfreev (nodes);
 #endif
 
+  /* To prevent from exiting and attaching a DBus tool like D-Feet; uncomment: */
+  /*g_info ("Point D-feet or other tool at: %s", session_bus_get_temporary_address());
+  g_main_loop_run (loop);*/
+  
   g_object_unref (c);
 }
 
