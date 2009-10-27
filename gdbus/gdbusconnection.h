@@ -318,7 +318,7 @@ struct _GDBusSubtreeVTable
 guint            g_dbus_connection_register_subtree           (GDBusConnection            *connection,
                                                                const gchar                *object_path,
                                                                const GDBusSubtreeVTable   *vtable,
-                                                               gboolean                    is_dynamic,
+                                                               GDBusSubtreeFlags           flags,
                                                                gpointer                    user_data,
                                                                GDestroyNotify              user_data_free_func,
                                                                GError                    **error);

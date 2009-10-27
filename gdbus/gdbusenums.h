@@ -257,6 +257,21 @@ typedef enum
   G_DBUS_PROPERTY_INFO_FLAGS_WRITABLE = (1<<1),
 } GDBusPropertyInfoFlags;
 
+/**
+ * GDBusSubtreeFlags:
+ * @G_DBUS_SUBTREE_FLAGS_NONE: No flags set.
+ * @G_DBUS_SUBTREE_FLAGS_DISPATCH_TO_UNENUMERATED_NODES: Method calls to objects not in the enumerated range
+ *                                                       will still be dispatched. This is useful if you want
+ *                                                       to dynamically spawn objects in the subtree.
+ *
+ * Flags passed to g_dbus_connection_register_subtree().
+ */
+typedef enum
+{
+  G_DBUS_SUBTREE_FLAGS_NONE = 0,                                /*< nick=none >*/
+  G_DBUS_SUBTREE_FLAGS_DISPATCH_TO_UNENUMERATED_NODES = (1<<0), /*< nick=dispatch-to-unenumerated-nodes >*/
+} GDBusSubtreeFlags;
+
 G_END_DECLS
 
 #endif /* __G_DBUS_ENUMS_H__ */

@@ -649,7 +649,7 @@ test_object_registration (void)
   subtree_registration_id = g_dbus_connection_register_subtree (c,
                                                                 "/foo/boss/executives",
                                                                 &subtree_vtable,
-                                                                FALSE,
+                                                                G_DBUS_SUBTREE_FLAGS_NONE,
                                                                 &data,
                                                                 on_subtree_unregistered,
                                                                 &error);
@@ -659,7 +659,7 @@ test_object_registration (void)
   registration_id = g_dbus_connection_register_subtree (c,
                                                         "/foo/boss/executives",
                                                         &subtree_vtable,
-                                                        FALSE,
+                                                        G_DBUS_SUBTREE_FLAGS_NONE,
                                                         &data,
                                                         on_subtree_unregistered,
                                                         &error);
@@ -676,7 +676,7 @@ test_object_registration (void)
   subtree_registration_id = g_dbus_connection_register_subtree (c,
                                                                 "/foo/boss/executives",
                                                                 &subtree_vtable,
-                                                                FALSE,
+                                                                G_DBUS_SUBTREE_FLAGS_NONE,
                                                                 &data,
                                                                 on_subtree_unregistered,
                                                                 &error);

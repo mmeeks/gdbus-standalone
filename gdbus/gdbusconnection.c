@@ -3620,7 +3620,7 @@ struct ExportedSubtree
   gchar                    *object_path;
   GDBusConnection          *connection;
   const GDBusSubtreeVTable *vtable;
-  gboolean                  is_dynamic;
+  GDBusSubtreeFlags         flags;
 
   GMainContext             *context;
   gpointer                  user_data;
@@ -3698,7 +3698,8 @@ handle_subtree_introspect (DBusConnection  *connection,
       requested_node = strrchr (requested_object_path, '/') + 1;
 
       /* Assert existence of object if we are not dynamic */
-      if (!es->is_dynamic && !_g_strv_has_string ((const gchar * const *) children, requested_node))
+      if (!(es->flags & G_DBUS_SUBTREE_FLAGS_DISPATCH_TO_UNENUMERATED_NODES) &&
+          !_g_strv_has_string ((const gchar * const *) children, requested_node))
         goto out;
     }
   else
@@ -3831,7 +3832,8 @@ handle_subtree_method_invocation (DBusConnection *connection,
       requested_node = strrchr (requested_object_path, '/') + 1;
 
       /* If not dynamic, skip if requested node is not part of children */
-      if (!es->is_dynamic && !_g_strv_has_string ((const gchar * const *) children, requested_node))
+      if (!(es->flags & G_DBUS_SUBTREE_FLAGS_DISPATCH_TO_UNENUMERATED_NODES) &&
+          !_g_strv_has_string ((const gchar * const *) children, requested_node))
         goto out;
     }
   else
@@ -4053,9 +4055,7 @@ static const DBusObjectPathVTable dbus_1_subtree_vtable =
  * @connection: A #GDBusConnection.
  * @object_path: The object path to register the subtree at.
  * @vtable: A #GDBusSubtreeVTable to enumerate, introspect and dispatch nodes in the subtree.
- * @is_dynamic: If %TRUE method calls to objects not in the enumerated range
- *              will still be dispatched. This is useful if you want to
- *              dynamically spawn objects in the subtree.
+ * @flags: Flags used to fine tune the behavior of the subtree
  * @user_data: Data to pass to functions in @vtable.
  * @user_data_free_func: Function to call when the subtree is unregistered.
  * @error: Return location for error or %NULL.
@@ -4068,11 +4068,12 @@ static const DBusObjectPathVTable dbus_1_subtree_vtable =
  *
  * When handling remote calls into any node in the subtree, first the
  * @enumerate function is used to check if the node exists. If the node exists
- * or @is_dynamic is set to %TRUE the @introspection function is used to
- * check if the node supports the requested method. If so, the
- * @dispatch function is used to determine where to dispatch the
- * call. The collected #GDBusInterfaceVTable and #gpointer will be
- * used to call into the interface vtable for processing the request.
+ * or the #G_DBUS_SUBTREE_FLAGS_DISPATCH_TO_UNENUMERATED_NODES flag is set
+ * the @introspection function is used to check if the node supports the
+ * requested method. If so, the @dispatch function is used to determine
+ * where to dispatch the call. The collected #GDBusInterfaceVTable and
+ * #gpointer will be used to call into the interface vtable for processing
+ * the request.
  *
  * All calls into user-provided code will be invoked in the <link
  * linkend="g-main-context-push-thread-default">thread-default main
@@ -4096,7 +4097,7 @@ guint
 g_dbus_connection_register_subtree (GDBusConnection            *connection,
                                     const gchar                *object_path,
                                     const GDBusSubtreeVTable   *vtable,
-                                    gboolean                    is_dynamic,
+                                    GDBusSubtreeFlags           flags,
                                     gpointer                    user_data,
                                     GDestroyNotify              user_data_free_func,
                                     GError                    **error)
@@ -4157,7 +4158,7 @@ g_dbus_connection_register_subtree (GDBusConnection            *connection,
     }
 
   es->vtable = vtable;
-  es->is_dynamic = is_dynamic;
+  es->flags = flags;
   es->id = _global_subtree_registration_id++; /* TODO: overflow etc. */
   es->user_data = user_data;
   es->user_data_free_func = user_data_free_func;

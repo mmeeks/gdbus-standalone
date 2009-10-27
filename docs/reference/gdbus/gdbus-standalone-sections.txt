@@ -37,6 +37,7 @@ GDBusSubtreeVTable
 GDBusSubtreeEnumerateFunc
 GDBusSubtreeIntrospectFunc
 GDBusSubtreeDispatchFunc
+GDBusSubtreeFlags
 g_dbus_connection_register_subtree
 g_dbus_connection_unregister_subtree
 <SUBSECTION Standard>
