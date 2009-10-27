@@ -3620,6 +3620,7 @@ struct ExportedSubtree
   gchar                    *object_path;
   GDBusConnection          *connection;
   const GDBusSubtreeVTable *vtable;
+  gboolean                  is_dynamic;
 
   GMainContext             *context;
   gpointer                  user_data;
@@ -3685,6 +3686,8 @@ handle_subtree_introspect (DBusConnection  *connection,
 
   //g_debug ("in handle_subtree_introspect for %s", requested_object_path);
 
+  /* Strictly we don't need the children in dynamic mode, but we avoid the
+   * conditionals to preserve code clarity */
   children = es->vtable->enumerate (es->connection,
                                     es->user_data,
                                     sender,
@@ -3693,8 +3696,9 @@ handle_subtree_introspect (DBusConnection  *connection,
   if (!is_root)
     {
       requested_node = strrchr (requested_object_path, '/') + 1;
-      /* skip if requested node is not part of children */
-      if (!_g_strv_has_string ((const gchar * const *) children, requested_node))
+
+      /* Assert existence of object if we are not dynamic */
+      if (!es->is_dynamic && !_g_strv_has_string ((const gchar * const *) children, requested_node))
         goto out;
     }
   else
@@ -3825,8 +3829,9 @@ handle_subtree_method_invocation (DBusConnection *connection,
   if (!is_root)
     {
       requested_node = strrchr (requested_object_path, '/') + 1;
-      /* skip if requested node is not part of children */
-      if (!_g_strv_has_string ((const gchar * const *) children, requested_node))
+
+      /* If not dynamic, skip if requested node is not part of children */
+      if (!es->is_dynamic && !_g_strv_has_string ((const gchar * const *) children, requested_node))
         goto out;
     }
   else
@@ -4048,6 +4053,9 @@ static const DBusObjectPathVTable dbus_1_subtree_vtable =
  * @connection: A #GDBusConnection.
  * @object_path: The object path to register the subtree at.
  * @vtable: A #GDBusSubtreeVTable to enumerate, introspect and dispatch nodes in the subtree.
+ * @is_dynamic: If %TRUE method calls to objects not in the enumerated range
+ *              will still be dispatched. This is useful if you want to
+ *              dynamically spawn objects in the subtree.
  * @user_data: Data to pass to functions in @vtable.
  * @user_data_free_func: Function to call when the subtree is unregistered.
  * @error: Return location for error or %NULL.
@@ -4059,8 +4067,9 @@ static const DBusObjectPathVTable dbus_1_subtree_vtable =
  * by @object_path.
  *
  * When handling remote calls into any node in the subtree, first the
- * @enumerate and @introspection function is used to check if the node
- * exists and whether it supports the requested method. If so, the
+ * @enumerate function is used to check if the node exists. If the node exists
+ * or @is_dynamic is set to %TRUE the @introspection function is used to
+ * check if the node supports the requested method. If so, the
  * @dispatch function is used to determine where to dispatch the
  * call. The collected #GDBusInterfaceVTable and #gpointer will be
  * used to call into the interface vtable for processing the request.
@@ -4087,6 +4096,7 @@ guint
 g_dbus_connection_register_subtree (GDBusConnection            *connection,
                                     const gchar                *object_path,
                                     const GDBusSubtreeVTable   *vtable,
+                                    gboolean                    is_dynamic,
                                     gpointer                    user_data,
                                     GDestroyNotify              user_data_free_func,
                                     GError                    **error)
@@ -4099,6 +4109,7 @@ g_dbus_connection_register_subtree (GDBusConnection            *connection,
   g_return_val_if_fail (!g_dbus_connection_get_is_disconnected (connection), 0);
   g_return_val_if_fail (object_path != NULL, 0);
   g_return_val_if_fail (vtable != NULL, 0);
+  g_return_val_if_fail (error == NULL || *error == NULL, 0);
 
   ret = 0;
 
@@ -4146,6 +4157,7 @@ g_dbus_connection_register_subtree (GDBusConnection            *connection,
     }
 
   es->vtable = vtable;
+  es->is_dynamic = is_dynamic;
   es->id = _global_subtree_registration_id++; /* TODO: overflow etc. */
   es->user_data = user_data;
   es->user_data_free_func = user_data_free_func;
