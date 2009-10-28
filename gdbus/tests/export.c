@@ -375,6 +375,66 @@ count_interfaces (GDBusConnection *c,
   return ret;
 }
 
+static void
+dyna_create_callback (GDBusProxy   *proxy,
+                      GAsyncResult  *res,
+                      gpointer      user_data)
+{
+  GVariant *result;
+  GError *error;
+
+  error = NULL;
+  result = g_dbus_proxy_invoke_method_finish (proxy,
+                                              res,
+                                              &error);
+  g_assert_no_error (error);
+  g_assert (result != NULL);
+  g_variant_unref (result);
+
+  g_main_loop_quit (loop);
+}
+
+/* Dynamically create @object_name under /foo/dyna */
+static void
+dyna_create (GDBusConnection *c,
+             const gchar     *object_name)
+{
+  GError *error;
+  GDBusProxy *proxy;
+  gchar *object_path;
+
+  object_path = g_strconcat ("/foo/dyna/", object_name, NULL);
+  
+  error = NULL;
+  proxy = g_dbus_proxy_new_sync (c,
+                                 G_TYPE_DBUS_PROXY,
+                                 G_DBUS_PROXY_FLAGS_DO_NOT_LOAD_PROPERTIES |
+                                 G_DBUS_PROXY_FLAGS_DO_NOT_CONNECT_SIGNALS,
+                                 g_dbus_connection_get_unique_name (c),
+                                 object_path,
+                                 "org.example.Dyna",
+                                 NULL,
+                                 &error);
+  g_assert_no_error (error);
+  g_assert (proxy != NULL);
+
+  /* do this async to avoid libdbus-1 deadlocks */
+  g_dbus_proxy_invoke_method (proxy,
+                              "DynaCyber",
+                              g_variant_new ("()"),
+                              -1,
+                              NULL,
+                              (GAsyncReadyCallback) dyna_create_callback,
+                              NULL);
+  g_main_loop_run (loop);
+
+  g_assert_no_error (error);
+
+  g_object_unref (proxy);
+  g_free (object_path);
+
+  return;
+}
 
 typedef struct
 {
@@ -861,7 +921,7 @@ test_object_registration (void)
   g_strfreev (nodes);
   g_assert_cmpint (count_interfaces (c, "/foo/dyna"), ==, 4);
 
-  /* Install three nodes in the dynamic subtree via the backdoor and
+  /* Install three nodes in the dynamic subtree via the dyna_data backdoor and
    * assert that they show up correctly in the introspection data */
   g_ptr_array_add (dyna_data, "lol");
   g_ptr_array_add (dyna_data, "cat");
@@ -876,6 +936,19 @@ test_object_registration (void)
   g_assert_cmpint (count_interfaces (c, "/foo/dyna/lol"), ==, 4);
   g_assert_cmpint (count_interfaces (c, "/foo/dyna/cat"), ==, 4);
   g_assert_cmpint (count_interfaces (c, "/foo/dyna/cheezburger"), ==, 4);
+
+  /* Call a non-existing object path and assert that it has been created */
+  dyna_create (c, "dynamicallycreated");
+  nodes = get_nodes_at (c, "/foo/dyna");
+  g_assert (nodes != NULL);
+  g_assert_cmpint (g_strv_length (nodes), ==, 4);
+  g_assert_cmpstr (nodes[0], ==, "lol");
+  g_assert_cmpstr (nodes[1], ==, "cat");
+  g_assert_cmpstr (nodes[2], ==, "cheezburger");
+  g_assert_cmpstr (nodes[3], ==, "dynamicallycreated");
+  g_strfreev (nodes);
+  g_assert_cmpint (count_interfaces (c, "/foo/dyna/dynamicallycreated"), ==, 4);
+
   
   /* now check that the object hierarachy is properly generated... yes, it's a bit
    * perverse that we round-trip to the bus to introspect ourselves ;-)
