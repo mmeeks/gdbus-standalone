@@ -143,16 +143,6 @@ static const GDBusMethodInfo dyna_method_info[] =
   }
 };
 
-static const GDBusSignalInfo dyna_signal_info[] =
-{
-  
-};
-
-static const GDBusPropertyInfo dyna_property_info[] =
-{
-  
-};
-
 static const GDBusInterfaceInfo dyna_interface_info =
 {
   "org.example.Dyna",
@@ -176,10 +166,12 @@ dyna_cyber (GDBusConnection *connection,
             GDBusMethodInvocation *invocation)
 {
   GPtrArray *data = user_data;
-  char *node_name = strrchr (object_path, '/') + 1;
+  gchar *node_name;
   guint n;
-  
-  /* Add new node if it is not already known */  
+
+  node_name = strrchr (object_path, '/') + 1;
+
+  /* Add new node if it is not already known */
   for (n = 0; n < data->len ; n++)
     {
       if (g_strcmp0 (g_ptr_array_index (data, n), node_name) == 0)
@@ -404,7 +396,7 @@ dyna_create (GDBusConnection *c,
   gchar *object_path;
 
   object_path = g_strconcat ("/foo/dyna/", object_name, NULL);
-  
+
   error = NULL;
   proxy = g_dbus_proxy_new_sync (c,
                                  G_TYPE_DBUS_PROXY,
@@ -572,7 +564,7 @@ dynamic_subtree_enumerate (GDBusConnection       *connection,
   GPtrArray *data = user_data;
   gchar **nodes = g_new (gchar*, data->len + 1);
   guint n;
-  
+
   for (n = 0; n < data->len; n++)
     {
       nodes[n] = g_strdup (g_ptr_array_index (data, n));
@@ -949,7 +941,7 @@ test_object_registration (void)
   g_strfreev (nodes);
   g_assert_cmpint (count_interfaces (c, "/foo/dyna/dynamicallycreated"), ==, 4);
 
-  
+
   /* now check that the object hierarachy is properly generated... yes, it's a bit
    * perverse that we round-trip to the bus to introspect ourselves ;-)
    */
@@ -1081,7 +1073,7 @@ test_object_registration (void)
   /* To prevent from exiting and attaching a DBus tool like D-Feet; uncomment: */
   /*g_info ("Point D-feet or other tool at: %s", session_bus_get_temporary_address());
   g_main_loop_run (loop);*/
-  
+
   g_object_unref (c);
 }
 

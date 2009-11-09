@@ -4055,7 +4055,7 @@ static const DBusObjectPathVTable dbus_1_subtree_vtable =
  * @connection: A #GDBusConnection.
  * @object_path: The object path to register the subtree at.
  * @vtable: A #GDBusSubtreeVTable to enumerate, introspect and dispatch nodes in the subtree.
- * @flags: Flags used to fine tune the behavior of the subtree
+ * @flags: Flags used to fine tune the behavior of the subtree.
  * @user_data: Data to pass to functions in @vtable.
  * @user_data_free_func: Function to call when the subtree is unregistered.
  * @error: Return location for error or %NULL.

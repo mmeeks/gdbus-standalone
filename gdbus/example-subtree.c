@@ -332,7 +332,7 @@ on_name_acquired (GDBusConnection *connection,
   registration_id = g_dbus_connection_register_subtree (connection,
                                                        "/org/gtk/GDBus/TestSubtree/Devices",
                                                         &subtree_vtable,
-                                                        FALSE, /* is_dynamic */
+                                                        G_DBUS_SUBTREE_FLAGS_NONE,
                                                         NULL,  /* user_data */
                                                         NULL,  /* user_data_free_func */
                                                         NULL); /* GError** */
