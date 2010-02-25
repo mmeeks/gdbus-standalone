@@ -27,6 +27,7 @@
 #ifndef __G_DBUS_TYPES_H__
 #define __G_DBUS_TYPES_H__
 
+#include "gvariant.h"
 #include <gdbus/gdbusenums.h>
 
 G_BEGIN_DECLS

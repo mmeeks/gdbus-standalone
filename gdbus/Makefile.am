@@ -31,7 +31,22 @@ gdbus-marshal.c: gdbus-marshal.h gdbus-marshal.list
 	$(glib_genmarshal) --prefix=_gdbus_marshal $(srcdir)/gdbus-marshal.list --body --internal) > $@.tmp && \
 	  mv $@.tmp $@
 
+gvariant_sources =			\
+	gbitlock.c			\
+	gvarianttype.c			\
+	gvariant-core.c			\
+	gvariant-serialiser.c		\
+	$(NULL)
+
+gvariant_headers =			\
+	gvariant.h			\
+	gbitlock.h			\
+	gvariant-serialiser.h		\
+	gvarianttype.h			\
+	$(NULL)
+
 gdbus_headers =				\
+	$(gvariant_headers)		\
 	gdbus.h				\
 	gdbusenums.h			\
 	gdbustypes.h			\
@@ -47,6 +62,7 @@ gdbus_headers =				\
 	$(NULL)
 
 libgdbus_standalone_la_SOURCES =					\
+	$(gvariant_sources)						\
 	gdbus.h								\
 	gdbustypes.h							\
 	gdbusenumtypes.h						\

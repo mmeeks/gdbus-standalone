@@ -2663,7 +2663,7 @@ invoke_get_all_properties_in_idle_cb (gpointer _data)
    *       We could fail the whole call if just a single get_property() call
    *       returns an error. We need clarification in the dbus spec for this.
    */
-  builder = g_variant_builder_new (G_VARIANT_TYPE_CLASS_ARRAY, NULL);
+  builder = g_variant_builder_new (G_VARIANT_TYPE_ARRAY);
   for (n = 0; n < data->interface_info->num_properties; n++)
     {
       const GDBusPropertyInfo *property_info = data->interface_info->properties + n;
@@ -2690,7 +2690,7 @@ invoke_get_all_properties_in_idle_cb (gpointer _data)
     }
   result = g_variant_builder_end (builder);
 
-  builder = g_variant_builder_new (G_VARIANT_TYPE_CLASS_TUPLE, NULL);
+  builder = g_variant_builder_new (G_VARIANT_TYPE_TUPLE);
   g_variant_builder_add_value (builder, result); /* steals result since result is floating */
   packed = g_variant_builder_end (builder);
 
@@ -3337,7 +3337,7 @@ g_dbus_connection_emit_signal (GDBusConnection    *connection,
   g_return_val_if_fail (object_path != NULL, FALSE);
   g_return_val_if_fail (interface_name != NULL, FALSE);
   g_return_val_if_fail (signal_name != NULL, FALSE);
-  g_return_val_if_fail ((parameters == NULL) || (g_variant_get_type_class (parameters) == G_VARIANT_TYPE_CLASS_TUPLE), FALSE);
+  g_return_val_if_fail ((parameters == NULL) || (g_variant_get_type_class (parameters) == G_VARIANT_TYPE_TUPLE), FALSE);
 
   message = dbus_message_new_signal (object_path,
                                      interface_name,
@@ -3424,7 +3424,7 @@ g_dbus_connection_invoke_method (GDBusConnection    *connection,
   g_return_if_fail (object_path != NULL);
   g_return_if_fail (interface_name != NULL);
   g_return_if_fail (method_name != NULL);
-  g_return_if_fail ((parameters == NULL) || (g_variant_get_type_class (parameters) == G_VARIANT_TYPE_CLASS_TUPLE));
+  g_return_if_fail ((parameters == NULL) || (g_variant_get_type_class (parameters) == G_VARIANT_TYPE_TUPLE));
 
   message = dbus_message_new_method_call (bus_name,
                                           object_path,
@@ -3571,7 +3571,7 @@ g_dbus_connection_invoke_method_sync (GDBusConnection    *connection,
   g_return_val_if_fail (object_path != NULL, NULL);
   g_return_val_if_fail (interface_name != NULL, NULL);
   g_return_val_if_fail (method_name != NULL, NULL);
-  g_return_val_if_fail ((parameters == NULL) || (g_variant_get_type_class (parameters) == G_VARIANT_TYPE_CLASS_TUPLE), NULL);
+  g_return_val_if_fail ((parameters == NULL) || (g_variant_get_type_class (parameters) == G_VARIANT_TYPE_TUPLE), NULL);
 
   message = dbus_message_new_method_call (bus_name,
                                           object_path,
