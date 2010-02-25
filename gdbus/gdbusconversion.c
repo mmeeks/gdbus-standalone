@@ -1,3 +1,4 @@
+#include <stdio.h>
 /* GDBus - GLib D-Bus Library
  *
  * Copyright © 2007, 2008  Ryan Lortie
@@ -337,12 +338,23 @@ dconf_dbus_to_gv (DBusMessageIter  *iter,
         dbus_message_iter_recurse (iter, &sub);
         class = dbus_message_iter_get_arg_type (iter);
         type = dbus_message_iter_get_signature (&sub);
-//        builder = g_variant_builder_new (class, G_VARIANT_TYPE (type));
-        builder = g_variant_builder_new (G_VARIANT_TYPE (type));
+
+#if 0
+	{
+	  char type2[2] = { '\0', '\0' };
+	  type2[0] = class;
+	  builder = g_variant_builder_new (G_VARIANT_TYPE (type2));
+	  fprintf (stderr, "new builder: variant ! '%s' '%s'\n", type, type2);
+	}
+#else
+        builder = g_variant_builder_new (G_VARIANT_TYPE_VARIANT);
+#endif
         dbus_free (type);
 
         while (dbus_message_iter_get_arg_type (&sub))
           {
+	    fprintf (stderr, "new arg '%c'\n", dbus_message_iter_get_arg_type (&sub));
+
             val = dconf_dbus_to_gv (&sub, error);
             if (val == NULL)
               {
@@ -369,7 +381,18 @@ dconf_dbus_to_gv (DBusMessageIter  *iter,
         dbus_message_iter_recurse (iter, &sub);
         class = dbus_message_iter_get_arg_type (iter);
         type = dbus_message_iter_get_signature (iter);
-//        builder = g_variant_builder_new (class, G_VARIANT_TYPE (type));
+
+#if 0
+	{
+	  char type2[2] = { '\0', '\0' };
+	  type2[0] = class;
+	  builder = g_variant_builder_new (G_VARIANT_TYPE (type2));
+	  fprintf (stderr, "new builder '%s' '%s'\n", type, type2);
+	}
+#else
+        builder = g_variant_builder_new (G_VARIANT_TYPE (type));
+#endif
+
         builder = g_variant_builder_new (G_VARIANT_TYPE (type));
         dbus_free (type);
 

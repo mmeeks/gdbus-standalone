@@ -26,6 +26,7 @@
 #include <string.h>
 #include <errno.h>
 #include <glib.h>
+#include "gvariant.h"
 
 /**
  * g_variant_print:
