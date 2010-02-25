@@ -37,6 +37,7 @@ gvariant_sources =			\
 	gvariant-core.c			\
 	gvariant-serialiser.c		\
 	gvariant-util.c			\
+	gvariant-printer.c		\
 	gvariant-valist.c		\
 	gvarianttypeinfo.c		\
 	$(NULL)
