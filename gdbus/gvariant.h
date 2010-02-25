@@ -32,9 +32,14 @@ typedef struct _GVariantIter    GVariantIter;
 typedef struct _GVariantBuilder GVariantBuilder;
 typedef enum   _GVariantClass   GVariantClass;
 
+/* compatibility bits yanked from other pieces of glib */
 #ifndef GSIZE_FROM_LE
 #  define GSIZE_FROM_LE(val)      (GSIZE_TO_LE (val))
 #  define GSSIZE_FROM_LE(val)     (GSSIZE_TO_LE (val))
+#endif
+#ifndef G_TYPE_VARIANT
+#  define        G_TYPE_VARIANT (g_variant_get_gtype ())
+GType   g_variant_get_gtype     (void)  G_GNUC_CONST;
 #endif
 
 enum _GVariantClass
