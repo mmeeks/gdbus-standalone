@@ -826,12 +826,12 @@ g_variant_type_info_unref (GVariantTypeInfo *info)
     {
       ContainerInfo *container = (ContainerInfo *) info;
 
+      g_static_rec_mutex_lock (&g_variant_type_info_lock);
       if (g_atomic_int_dec_and_test (&container->ref_count))
         {
-          g_static_rec_mutex_lock (&g_variant_type_info_lock);
           g_hash_table_remove (g_variant_type_info_table,
                                container->type_string);
-          g_static_rec_mutex_unlock (&g_variant_type_info_lock);
+	  g_static_rec_mutex_unlock (&g_variant_type_info_lock);
 
           g_free (container->type_string);
 
@@ -844,6 +844,8 @@ g_variant_type_info_unref (GVariantTypeInfo *info)
           else
             g_assert_not_reached ();
         }
+      else
+	g_static_rec_mutex_unlock (&g_variant_type_info_lock);
     }
 }
 
