@@ -37,6 +37,8 @@ gvariant_sources =			\
 	gvariant-core.c			\
 	gvariant-serialiser.c		\
 	gvariant-util.c			\
+	gvariant-valist.c		\
+	gvarianttypeinfo.c		\
 	$(NULL)
 
 gvariant_headers =			\
@@ -44,6 +46,7 @@ gvariant_headers =			\
 	gbitlock.h			\
 	gvariant-serialiser.h		\
 	gvarianttype.h			\
+	gvarianttypeinfo.h		\
 	$(NULL)
 
 gdbus_headers =				\

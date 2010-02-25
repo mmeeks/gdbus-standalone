@@ -25,6 +25,7 @@
 #include <glib/gstring.h>
 #include <glib/gmarkup.h>
 #include <glib/gerror.h>
+#include <glib-object.h>
 #include <stdarg.h>
 
 typedef struct _GVariant        GVariant;
@@ -36,10 +37,18 @@ typedef enum   _GVariantClass   GVariantClass;
 #ifndef GSIZE_FROM_LE
 #  define GSIZE_FROM_LE(val)      (GSIZE_TO_LE (val))
 #  define GSSIZE_FROM_LE(val)     (GSSIZE_TO_LE (val))
+// tad of a hack for now, but safe I hope
+#  if GLIB_SIZEOF_SIZE_T == 4
+#    define GSIZE_TO_LE(val)   ((gsize) GUINT32_TO_LE (val))
+#  elif GLIB_SIZEOF_SIZE_T == 8
+#    define GSIZE_TO_LE(val)   ((gsize) GUINT64_TO_LE (val))
+#  else
+#    error "Weirdo architecture - needs an updated glib"
+#  endif
 #endif
 #ifndef G_TYPE_VARIANT
 #  define        G_TYPE_VARIANT (g_variant_get_gtype ())
-// GType   g_variant_get_gtype     (void)  G_GNUC_CONST;
+GType   g_variant_get_gtype     (void)  G_GNUC_CONST;
 #endif
 
 enum _GVariantClass

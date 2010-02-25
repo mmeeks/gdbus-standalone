@@ -337,7 +337,8 @@ dconf_dbus_to_gv (DBusMessageIter  *iter,
         dbus_message_iter_recurse (iter, &sub);
         class = dbus_message_iter_get_arg_type (iter);
         type = dbus_message_iter_get_signature (&sub);
-        builder = g_variant_builder_new (class, G_VARIANT_TYPE (type));
+//        builder = g_variant_builder_new (class, G_VARIANT_TYPE (type));
+        builder = g_variant_builder_new (G_VARIANT_TYPE (type));
         dbus_free (type);
 
         while (dbus_message_iter_get_arg_type (&sub))
@@ -368,7 +369,8 @@ dconf_dbus_to_gv (DBusMessageIter  *iter,
         dbus_message_iter_recurse (iter, &sub);
         class = dbus_message_iter_get_arg_type (iter);
         type = dbus_message_iter_get_signature (iter);
-        builder = g_variant_builder_new (class, G_VARIANT_TYPE (type));
+//        builder = g_variant_builder_new (class, G_VARIANT_TYPE (type));
+        builder = g_variant_builder_new (G_VARIANT_TYPE (type));
         dbus_free (type);
 
         while (dbus_message_iter_get_arg_type (&sub))
@@ -442,7 +444,7 @@ _g_dbus_dbus_1_to_gvariant (DBusMessage  *message,
 
   dbus_message_iter_init (message, &iter);
 
-  builder = g_variant_builder_new (G_VARIANT_CLASS_TUPLE);
+  builder = g_variant_builder_new (G_VARIANT_TYPE_TUPLE);
   n = 0;
   while (dbus_message_iter_get_arg_type (&iter) != DBUS_TYPE_INVALID)
     {
