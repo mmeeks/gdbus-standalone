@@ -41,91 +41,91 @@ dconf_dbus_from_gv (DBusMessageIter  *iter,
 {
   switch (g_variant_get_type_class (value))
     {
-     case G_VARIANT_TYPE_BOOLEAN:
+     case G_VARIANT_CLASS_BOOLEAN:
       {
         dbus_bool_t v = g_variant_get_boolean (value);
         dbus_message_iter_append_basic (iter, DBUS_TYPE_BOOLEAN, &v);
         break;
       }
 
-     case G_VARIANT_TYPE_BYTE:
+     case G_VARIANT_CLASS_BYTE:
       {
         guint8 v = g_variant_get_byte (value);
         dbus_message_iter_append_basic (iter, DBUS_TYPE_BYTE, &v);
         break;
       }
 
-     case G_VARIANT_TYPE_INT16:
+     case G_VARIANT_CLASS_INT16:
       {
         gint16 v = g_variant_get_int16 (value);
         dbus_message_iter_append_basic (iter, DBUS_TYPE_INT16, &v);
         break;
       }
 
-     case G_VARIANT_TYPE_UINT16:
+     case G_VARIANT_CLASS_UINT16:
       {
         guint16 v = g_variant_get_uint16 (value);
         dbus_message_iter_append_basic (iter, DBUS_TYPE_UINT16, &v);
         break;
       }
 
-     case G_VARIANT_TYPE_INT32:
+     case G_VARIANT_CLASS_INT32:
       {
         gint32 v = g_variant_get_int32 (value);
         dbus_message_iter_append_basic (iter, DBUS_TYPE_INT32, &v);
         break;
       }
 
-     case G_VARIANT_TYPE_UINT32:
+     case G_VARIANT_CLASS_UINT32:
       {
         guint32 v = g_variant_get_uint32 (value);
         dbus_message_iter_append_basic (iter, DBUS_TYPE_UINT32, &v);
         break;
       }
 
-     case G_VARIANT_TYPE_INT64:
+     case G_VARIANT_CLASS_INT64:
       {
         gint64 v = g_variant_get_int64 (value);
         dbus_message_iter_append_basic (iter, DBUS_TYPE_INT64, &v);
         break;
       }
 
-     case G_VARIANT_TYPE_UINT64:
+     case G_VARIANT_CLASS_UINT64:
       {
         guint64 v = g_variant_get_uint64 (value);
         dbus_message_iter_append_basic (iter, DBUS_TYPE_UINT64, &v);
         break;
       }
 
-     case G_VARIANT_TYPE_DOUBLE:
+     case G_VARIANT_CLASS_DOUBLE:
       {
         gdouble v = g_variant_get_double (value);
         dbus_message_iter_append_basic (iter, DBUS_TYPE_DOUBLE, &v);
         break;
       }
 
-     case G_VARIANT_TYPE_STRING:
+     case G_VARIANT_CLASS_STRING:
       {
         const gchar *v = g_variant_get_string (value, NULL);
         dbus_message_iter_append_basic (iter, DBUS_TYPE_STRING, &v);
         break;
       }
 
-     case G_VARIANT_TYPE_OBJECT_PATH:
+     case G_VARIANT_CLASS_OBJECT_PATH:
       {
         const gchar *v = g_variant_get_string (value, NULL);
         dbus_message_iter_append_basic (iter, DBUS_TYPE_OBJECT_PATH, &v);
         break;
       }
 
-     case G_VARIANT_TYPE_SIGNATURE:
+     case G_VARIANT_CLASS_SIGNATURE:
       {
         const gchar *v = g_variant_get_string (value, NULL);
         dbus_message_iter_append_basic (iter, DBUS_TYPE_SIGNATURE, &v);
         break;
       }
 
-     case G_VARIANT_TYPE_VARIANT:
+     case G_VARIANT_CLASS_VARIANT:
       {
         DBusMessageIter sub;
         GVariant *child;
@@ -144,7 +144,7 @@ dconf_dbus_from_gv (DBusMessageIter  *iter,
         break;
       }
 
-     case G_VARIANT_TYPE_ARRAY:
+     case G_VARIANT_CLASS_ARRAY:
       {
         DBusMessageIter dbus_iter;
         const gchar *type_string;
@@ -170,7 +170,7 @@ dconf_dbus_from_gv (DBusMessageIter  *iter,
         break;
       }
 
-     case G_VARIANT_TYPE_TUPLE:
+     case G_VARIANT_CLASS_TUPLE:
       {
         DBusMessageIter dbus_iter;
         GVariantIter gv_iter;
@@ -190,7 +190,7 @@ dconf_dbus_from_gv (DBusMessageIter  *iter,
         break;
       }
 
-     case G_VARIANT_TYPE_DICT_ENTRY:
+     case G_VARIANT_CLASS_DICT_ENTRY:
       {
         DBusMessageIter dbus_iter;
         GVariant *key, *val;
@@ -329,7 +329,7 @@ dconf_dbus_to_gv (DBusMessageIter  *iter,
      case DBUS_TYPE_VARIANT:
        {
         GVariantBuilder *builder;
-        GVariantTypeClass class;
+        GVariantClass class;
         DBusMessageIter sub;
         char *type;
         GVariant *val;
@@ -360,7 +360,7 @@ dconf_dbus_to_gv (DBusMessageIter  *iter,
      case DBUS_TYPE_DICT_ENTRY:
       {
         GVariantBuilder *builder;
-        GVariantTypeClass class;
+        GVariantClass class;
         DBusMessageIter sub;
         char *type;
         GVariant *val;
@@ -442,7 +442,7 @@ _g_dbus_dbus_1_to_gvariant (DBusMessage  *message,
 
   dbus_message_iter_init (message, &iter);
 
-  builder = g_variant_builder_new (G_VARIANT_TYPE_TUPLE, NULL);
+  builder = g_variant_builder_new (G_VARIANT_CLASS_TUPLE);
   n = 0;
   while (dbus_message_iter_get_arg_type (&iter) != DBUS_TYPE_INVALID)
     {

@@ -176,7 +176,7 @@ handle_set_property (GDBusConnection  *connection,
           _global_title = g_variant_dup_string (value, NULL);
 
           local_error = NULL;
-          builder = g_variant_builder_new (G_VARIANT_TYPE_ARRAY, NULL);
+          builder = g_variant_builder_new (G_VARIANT_TYPE_ARRAY);
           g_variant_builder_add (builder,
                                  "{sv}",
                                  "Title",
@@ -231,7 +231,7 @@ on_timeout_cb (gpointer user_data)
   swap_a_and_b = !swap_a_and_b;
 
   error = NULL;
-  builder = g_variant_builder_new (G_VARIANT_TYPE_ARRAY, NULL);
+  builder = g_variant_builder_new (G_VARIANT_TYPE_ARRAY);
   g_variant_builder_add (builder,
                          "{sv}",
                          "Foo",

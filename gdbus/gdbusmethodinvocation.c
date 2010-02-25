@@ -488,7 +488,7 @@ g_dbus_method_invocation_return_value (GDBusMethodInvocation *invocation,
   GError *error;
 
   g_return_if_fail (G_IS_DBUS_METHOD_INVOCATION (invocation));
-  g_return_if_fail ((parameters == NULL) || (g_variant_get_type_class (parameters) == G_VARIANT_TYPE_TUPLE));
+  g_return_if_fail ((parameters == NULL) || (g_variant_get_type_class (parameters) == G_VARIANT_CLASS_TUPLE));
 
   message = g_object_get_data (G_OBJECT (invocation), "dbus-1-message");
   g_assert (message != NULL);

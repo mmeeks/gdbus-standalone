@@ -26,7 +26,6 @@
 #include <glib/gi18n.h>
 #include <gobject/gvaluecollector.h>
 
-#include "gvariant.h"
 #include "gdbusproxy.h"
 #include "gdbusenumtypes.h"
 #include "gdbusconnection.h"

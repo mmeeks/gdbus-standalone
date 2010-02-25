@@ -21,7 +21,7 @@
 #ifndef __G_VARIANT_H__
 #define __G_VARIANT_H__
 
-#include <gvarianttype.h>
+#include "gvarianttype.h"
 #include <glib/gstring.h>
 #include <glib/gmarkup.h>
 #include <glib/gerror.h>
@@ -39,7 +39,7 @@ typedef enum   _GVariantClass   GVariantClass;
 #endif
 #ifndef G_TYPE_VARIANT
 #  define        G_TYPE_VARIANT (g_variant_get_gtype ())
-GType   g_variant_get_gtype     (void)  G_GNUC_CONST;
+// GType   g_variant_get_gtype     (void)  G_GNUC_CONST;
 #endif
 
 enum _GVariantClass
@@ -290,6 +290,8 @@ gsize                           g_variant_get_size                      (GVarian
 #define G_VARIANT_JUST ((gboolean *) "truetrue")
 
 GVariantClass                   g_variant_classify                      (GVariant            *value);
+
+#define g_variant_get_type_class g_variant_classify
 
 G_END_DECLS
 

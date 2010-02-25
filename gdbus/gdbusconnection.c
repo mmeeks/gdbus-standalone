@@ -3337,7 +3337,7 @@ g_dbus_connection_emit_signal (GDBusConnection    *connection,
   g_return_val_if_fail (object_path != NULL, FALSE);
   g_return_val_if_fail (interface_name != NULL, FALSE);
   g_return_val_if_fail (signal_name != NULL, FALSE);
-  g_return_val_if_fail ((parameters == NULL) || (g_variant_get_type_class (parameters) == G_VARIANT_TYPE_TUPLE), FALSE);
+  g_return_val_if_fail ((parameters == NULL) || (g_variant_get_type_class (parameters) == G_VARIANT_CLASS_TUPLE), FALSE);
 
   message = dbus_message_new_signal (object_path,
                                      interface_name,
@@ -3424,7 +3424,7 @@ g_dbus_connection_invoke_method (GDBusConnection    *connection,
   g_return_if_fail (object_path != NULL);
   g_return_if_fail (interface_name != NULL);
   g_return_if_fail (method_name != NULL);
-  g_return_if_fail ((parameters == NULL) || (g_variant_get_type_class (parameters) == G_VARIANT_TYPE_TUPLE));
+  g_return_if_fail ((parameters == NULL) || (g_variant_get_type_class (parameters) == G_VARIANT_CLASS_TUPLE));
 
   message = dbus_message_new_method_call (bus_name,
                                           object_path,
@@ -3571,7 +3571,7 @@ g_dbus_connection_invoke_method_sync (GDBusConnection    *connection,
   g_return_val_if_fail (object_path != NULL, NULL);
   g_return_val_if_fail (interface_name != NULL, NULL);
   g_return_val_if_fail (method_name != NULL, NULL);
-  g_return_val_if_fail ((parameters == NULL) || (g_variant_get_type_class (parameters) == G_VARIANT_TYPE_TUPLE), NULL);
+  g_return_val_if_fail ((parameters == NULL) || (g_variant_get_type_class (parameters) == G_VARIANT_CLASS_TUPLE), NULL);
 
   message = dbus_message_new_method_call (bus_name,
                                           object_path,

@@ -36,6 +36,7 @@ gvariant_sources =			\
 	gvarianttype.c			\
 	gvariant-core.c			\
 	gvariant-serialiser.c		\
+	gvariant-util.c			\
 	$(NULL)
 
 gvariant_headers =			\
