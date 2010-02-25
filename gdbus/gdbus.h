@@ -37,6 +37,8 @@
 #include <gdbus/gdbusmethodinvocation.h>
 #include <gdbus/gdbusserver.h>
 
+extern void g_dbus_threads_init (void);
+
 #undef __G_DBUS_G_DBUS_H_INSIDE__
 
 #endif /* __G_DBUS_H__ */

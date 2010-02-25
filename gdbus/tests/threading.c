@@ -484,6 +484,7 @@ main (int   argc,
 
   g_type_init ();
   g_thread_init (NULL);
+  g_dbus_threads_init ();
   g_test_init (&argc, &argv, NULL);
 
   /* all the tests rely on a shared main loop */

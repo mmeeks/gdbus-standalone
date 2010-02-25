@@ -325,3 +325,12 @@ on_new_dbus_1_connection (DBusServer     *_server,
   g_object_unref (connection);
 }
 
+extern void _g_futex_thread_init(void);
+
+/* a hack to initialize threads */
+void g_dbus_threads_init (void)
+{
+  /* ugly - but we need a working 'bitlock' */
+  _g_futex_thread_init ();
+  dbus_threads_init_default ();
+}
